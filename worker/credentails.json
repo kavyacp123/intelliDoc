@@ -1,0 +1,17 @@
+POST https: //vision.googleapis.com/v1/images:annotate?key=AIzaSyDMON6eSlj1E_xo6--7U0lsLVkTb1q6rTw
+Content-Type: application/json
+{
+    "requests": [
+        {
+            "image": {
+                "content": "BASE64_ENCODED_IMAGE"
+            },
+            "features": [
+                {
+                    "type": "LABEL_DETECTION",
+                    "maxResults": 1
+                }
+            ]
+        }
+    ]
+}

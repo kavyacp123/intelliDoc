@@ -24,7 +24,7 @@ from dotenv import load_dotenv
 from pipeline.pdf_loader import load_pdf, load_image
 from pipeline.image_preprocessing import preprocess_image, opencv_to_pil
 from pipeline.ocr_engine import run_ocr, get_full_text
-from pipeline.layout_detection import detect_layout
+# from pipeline.layout_detection import detect_layout  # Skipped
 from pipeline.key_value_extraction import extract_key_values
 from pipeline.table_extraction import extract_tables_from_pdf
 from pipeline.normalization import normalize_record
@@ -153,7 +153,7 @@ def process_document(doc_id: str, file_path: str):
             preprocessed_pil = opencv_to_pil(preprocessed_cv)
 
             # ── Stage 3: OCR ───────────────────────────────────────────────
-            print("[Stage 3] Running PaddleOCR...")
+            print("[Stage 3] Running AWS Textract...")
             ocr_results = run_ocr(page_image)  # Use original for better colour info
             full_text = get_full_text(ocr_results)
             avg_confidence = (
@@ -163,8 +163,8 @@ def process_document(doc_id: str, file_path: str):
             print(f"  → {len(ocr_results)} text blocks, avg confidence: {avg_confidence:.2f}")
 
             # ── Stage 4: Layout detection ──────────────────────────────────
-            print("[Stage 4] Detecting layout...")
-            layout_regions = detect_layout(page_image)
+            print("[Stage 4] Skipping layout detection (Bypassed)...")
+            # layout_regions = detect_layout(page_image)
 
             # ── Stage 5: Key-value extraction ──────────────────────────────
             print("[Stage 5] Extracting key-value pairs...")
