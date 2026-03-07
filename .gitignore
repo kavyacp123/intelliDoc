@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Environment variables
+.env
+.env.local
+.env.development
+*.local
+
+# Build / Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Project specific data directories and volumes
+uploads/
+!uploads/.gitkeep
+src/uploads/
+!src/uploads/.gitkeep
+pgdata/
+pg-data/
+redis-data/
+redisdata/
+
+# Test files and models
+*.pdf
+# But maybe we want some sample files? Commenting out ignoring all PDFs, 
+# just ignoring the specific ones we tested with or known large files:
+Sales.pdf
+eng.traineddata

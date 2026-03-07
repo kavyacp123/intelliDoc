@@ -1,0 +1,33 @@
+# ──────────────────────────────────────────────
+# IntelliDoc Worker — Python Dependencies
+# ──────────────────────────────────────────────
+
+# OCR
+paddlepaddle>=2.5.0
+paddleocr>=2.7.0
+
+# Layout Detection
+layoutparser>=0.3.4
+
+# Key-Value Extraction
+deepdoctection>=0.31
+
+# Table Extraction
+camelot-py[cv]>=0.11.0
+
+# Image Processing
+opencv-python>=4.9.0
+Pillow>=10.2.0
+
+# PDF → Image
+pdf2image>=1.17.0
+
+# Database
+psycopg2-binary>=2.9.9
+
+# Redis
+redis>=5.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+numpy>=1.26.0
