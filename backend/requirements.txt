@@ -1,0 +1,31 @@
+# Core framework
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Data processing
+pandas
+openpyxl
+
+# Database
+duckdb
+
+# Validation & settings
+pydantic
+pydantic-settings
+
+# Authentication
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt
+
+# SQL parsing & validation
+sqlglot
+
+# Config
+pyyaml
+
+# Testing
+pytest
+pytest-asyncio
+httpx

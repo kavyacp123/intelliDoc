@@ -1,0 +1,28 @@
+# ── Semantic Layer Configuration ──
+# Maps business-friendly names to SQL expressions.
+# Used by the Query Builder to generate controlled SQL
+# from structured intents.
+
+# Default time column for time-based queries
+time_column: date
+
+# Metrics — aggregation expressions
+metrics:
+  revenue: "SUM(revenue)"
+  profit: "SUM(revenue - expense)"
+  total_expense: "SUM(expense)"
+  order_count: "COUNT(*)"
+  avg_revenue: "AVG(revenue)"
+  avg_quantity: "AVG(quantity)"
+  total_quantity: "SUM(quantity)"
+  max_revenue: "MAX(revenue)"
+  min_revenue: "MIN(revenue)"
+
+# Dimensions — grouping expressions
+dimensions:
+  region: "region"
+  category: "category"
+  month: "DATE_TRUNC('month', date)"
+  quarter: "DATE_TRUNC('quarter', date)"
+  year: "DATE_TRUNC('year', date)"
+  day: "DATE_TRUNC('day', date)"
