@@ -1,4 +1,4 @@
-POST https: //vision.googleapis.com/v1/images:annotate?key=AIzaSyDMON6eSlj1E_xo6--7U0lsLVkTb1q6rTw
+POST https: 
 Content-Type: application/json
 {
     "requests": [
