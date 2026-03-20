@@ -33,6 +33,5 @@ class QueryResponse(BaseModel):
 
     data: List[Dict[str, Any]]
     sql: str  # the validated/rewritten SQL that was actually executed
-    intent: Optional[StructuredIntent] = None
     chart_hint: Optional[str] = None  # e.g. "bar", "line", "pie"
     row_count: int = 0
