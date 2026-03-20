@@ -8,7 +8,8 @@ Endpoints:
 
 import uuid
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
 
 from app.core.database import get_connection
 from app.core.security import create_access_token, hash_password, verify_password
@@ -67,7 +68,7 @@ async def register(request: UserRegisterRequest):
     response_model=TokenResponse,
     summary="Login and get JWT token",
 )
-async def login(request: UserLoginRequest):
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     """
     Authenticate a user and return a JWT access token.
 
@@ -78,10 +79,10 @@ async def login(request: UserLoginRequest):
 
     row = conn.execute(
         "SELECT user_id, password FROM users WHERE email = ?",
-        [request.email],
+        [form_data.username],
     ).fetchone()
 
-    if row is None or not verify_password(request.password, row[1]):
+    if row is None or not verify_password(form_data.password, row[1]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
