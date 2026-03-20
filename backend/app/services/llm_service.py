@@ -25,6 +25,27 @@ from app.models.metadata import TableMetadata
 from app.schemas.query_schema import StructuredIntent
 from app.services.semantic_service import get_semantic_summary
 
+def filter_relevant_columns(schemas: List[TableMetadata], question: str) -> List[TableMetadata]:
+    """Filter schema to send only relevant columns, reducing LLM payload size and latency."""
+    q_lower = question.lower()
+    # Keep baseline date/tenant columns + words found in the question
+    keep_keywords = {"date", "time", "year", "month", "tenant_id"}
+    for word in re.findall(r'\w+', q_lower):
+        if len(word) > 2:
+            keep_keywords.add(word)
+            
+    pruned_schemas = []
+    for s in schemas:
+        kept = []
+        for c in s.columns:
+            c_name = c.name.lower()
+            if any(k in c_name or c_name in k for k in keep_keywords):
+                kept.append(c)
+        if not kept:
+            kept = s.columns[:5] # Fallback if filtering is too aggressive
+        pruned_schemas.append(TableMetadata(table_name=s.table_name, columns=kept))
+    return pruned_schemas
+
 
 def generate_intent(
     question: str,
@@ -56,14 +77,18 @@ def generate_intent(
     available_dimensions = semantic["available_dimensions"]
 
     # ── Intent extraction ──
-    if settings.LLM_PROVIDER == "gemini":
+    print(f"PROVIDER IS {settings.LLM_PROVIDER}")
+    if True: # Forced activation of Gemini LLM
         if not settings.GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY is not configured in .env")
         
         client = genai.Client(api_key=settings.GEMINI_API_KEY)
         
+        # Prune columns to optimize prompt size and response time
+        pruned_schemas = filter_relevant_columns(schemas, question)
+        
         schema_context = []
-        for s in schemas:
+        for s in pruned_schemas:
             cols = [f"{c.name} ({c.dtype})" for c in s.columns]
             schema_context.append(f"Table: {s.table_name}, Columns: {', '.join(cols)}")
             

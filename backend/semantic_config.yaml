@@ -8,19 +8,19 @@ time_column: date
 
 # Metrics — aggregation expressions
 metrics:
-  revenue: "SUM(sales)"
-  profit: "SUM(profit)"
-  sales: "SUM(sales)"
-  cogs: "SUM(cogs)"
-  total_profit: "SUM(profit)"
-  total_sales: "SUM(sales)"
-  order_count: "COUNT(*)"
+  revenue: "SUM(revenue)"
+  profit: "SUM(revenue - expense)"
+  sales: "SUM(revenue)"
+  expense: "SUM(expense)"
+  quantity: "SUM(quantity)"
 
 # Dimensions — grouping expressions
 dimensions:
-  segment: "segment"
+  region: "region"
   country: "country"
   product: "product"
+  category: "category"
+  customer_type: "customer_type"
   month: "DATE_TRUNC('month', date)"
   quarter: "DATE_TRUNC('quarter', date)"
   year: "DATE_TRUNC('year', date)"

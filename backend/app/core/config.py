@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 
     # ── Database ──
     DATABASE_PATH: str = "./data/analytics.duckdb"
+    REDIS_URL: str = "redis://localhost:6379/0"
 
     # ── Query safety ──
     DEFAULT_QUERY_LIMIT: int = 1000

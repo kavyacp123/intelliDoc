@@ -10,6 +10,7 @@ Safety guarantees at this point:
   - This engine only needs to execute and return results safely
 """
 
+import concurrent.futures
 import logging
 from typing import Any, Dict, List
 
@@ -47,22 +48,28 @@ def execute_query(sql: str) -> List[Dict[str, Any]]:
     try:
         logger.info("Executing query: %s", sql)
 
-        # Execute with DuckDB
-        result = conn.execute(sql)
+        def _run():
+            cursor = conn.cursor()
+            result = cursor.execute(sql)
+            columns = [desc[0] for desc in result.description]
+            rows = result.fetchall()
+            cursor.close()
+            
+            data = []
+            for row in rows:
+                row_dict = {}
+                for i, col in enumerate(columns):
+                    row_dict[col] = _make_serializable(row[i])
+                data.append(row_dict)
+            return data
 
-        # Get column names from description
-        columns = [desc[0] for desc in result.description]
-
-        # Fetch all rows and convert to dicts
-        rows = result.fetchall()
-        data = []
-        for row in rows:
-            row_dict = {}
-            for i, col in enumerate(columns):
-                value = row[i]
-                # Convert non-serializable types to strings
-                row_dict[col] = _make_serializable(value)
-            data.append(row_dict)
+        # Enforce 2-second timeout
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_run)
+            try:
+                data = future.result(timeout=2.0)
+            except concurrent.futures.TimeoutError:
+                raise QueryExecutionError("Query execution timed out after 2 seconds")
 
         logger.info("Query returned %d rows", len(data))
         return data

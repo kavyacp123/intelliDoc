@@ -20,6 +20,8 @@ from app.services.semantic_service import (
     get_time_column,
 )
 from app.utils.sql_utils import build_where_clause
+from app.core.database import get_connection
+from datetime import datetime
 
 
 def build_query(intent: StructuredIntent) -> str:
@@ -82,9 +84,44 @@ def build_query(intent: StructuredIntent) -> str:
     if time_clause:
         where_parts.append(time_clause)
 
-    # ── Step 5: Compose final SQL ──
-    sql = f"SELECT {', '.join(select_parts)}"
-    sql += f" FROM \"{table_name}\""
+    # ── Step 5: Intercept exactly matching Pre-aggregations ──
+    conn = get_connection()
+    all_tables = [r[0] for r in conn.execute("SHOW TABLES").fetchall()]
+    
+    if intent.metric in ("revenue", "sales") and not intent.filters and not intent.time_range:
+        if intent.dimension in ("region", "country"):
+            agg_table = f"{table_name}_agg_rev_by_region"
+            if agg_table in all_tables:
+                sql = f'SELECT region AS "{intent.dimension}", revenue AS "{metric_alias}" FROM "{agg_table}"'
+                sql += f' ORDER BY "{metric_alias}" DESC'
+                return sql
+                
+        if intent.dimension == "month":
+            agg_table = f"{table_name}_agg_rev_by_month"
+            if agg_table in all_tables:
+                sql = f'SELECT month AS "{intent.dimension}", revenue AS "{metric_alias}" FROM "{agg_table}"'
+                sql += f' ORDER BY "{metric_alias}" DESC'
+                return sql
+
+    # ── Step 6: Compose final SQL with Partitions ──
+    partitions = [t for t in all_tables if t.startswith(f"{table_name}_") and "_agg_" not in t]
+    
+    relevant_partitions = partitions
+    if intent.time_range:
+        tr = intent.time_range.lower()
+        if "this month" in tr:
+            current_month = datetime.now().strftime('%Y_%m')
+            target = f"{table_name}_{current_month}"
+            if target in partitions:
+                relevant_partitions = [target]
+    
+    if not relevant_partitions:
+        relevant_partitions = [f"{table_name}_default"] # fallback
+        
+    subqueries = [f'SELECT * FROM "{p}"' for p in relevant_partitions]
+    base_from = f"({ ' UNION ALL '.join(subqueries) }) AS partitioned_data"
+
+    sql = f"SELECT {', '.join(select_parts)} FROM {base_from}"
 
     if where_parts:
         sql += f" WHERE {' AND '.join(where_parts)}"

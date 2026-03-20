@@ -17,6 +17,7 @@ import pandas as pd
 from app.core.database import get_connection
 from app.models.metadata import ColumnMeta, TableMetadata
 from app.utils.parser_utils import infer_column_types, normalize_columns
+from app.services.aggregation_service import run_pre_aggregations
 
 
 def process_upload(
@@ -55,17 +56,41 @@ def process_upload(
 
     # ── Step 2: Normalize column names ──
     df = normalize_columns(df)
+    
+    # ── Step 2.5: Auto-cast datetime columns to avoid DuckDB VARCHAR errors ──
+    for col in df.columns:
+        if 'date' in col.lower() or 'time' in col.lower():
+            try:
+                df[col] = pd.to_datetime(df[col])
+            except Exception:
+                pass
 
-    # ── Step 3: Inject tenant_id ──
+    # ── Step 3: Infer schema ──tenant_id ──
     df.insert(0, "tenant_id", tenant_id)
 
     # ── Step 4: Generate unique identifiers ──
     dataset_id = str(uuid.uuid4())
     table_name = f"dataset_{dataset_id.replace('-', '_')}"
 
-    # ── Step 5: Create table and insert data ──
+    # ── Step 5: Partition and Insert ──
     conn = get_connection()
-    conn.execute(f"CREATE TABLE \"{table_name}\" AS SELECT * FROM df")
+    
+    date_col = None
+    for col in df.columns:
+        if 'date' in col.lower() or pd.api.types.is_datetime64_any_dtype(df[col]):
+            date_col = col
+            break
+
+    if date_col:
+        df['_month'] = pd.to_datetime(df[date_col], errors='coerce').dt.strftime('%Y_%m').fillna('unknown')
+        for month, group in df.groupby('_month'):
+            part_name = f"{table_name}_{month}"
+            group_clean = group.drop(columns=['_month'])
+            conn.execute(f'CREATE TABLE IF NOT EXISTS "{part_name}" AS SELECT * FROM group_clean LIMIT 0')
+            conn.execute(f'INSERT INTO "{part_name}" SELECT * FROM group_clean')
+    else:
+        part_name = f"{table_name}_default"
+        conn.execute(f'CREATE TABLE "{part_name}" AS SELECT * FROM df')
 
     # ── Step 6: Register in datasets table ──
     conn.execute(
@@ -94,6 +119,9 @@ def process_upload(
             """,
             [dataset_id, col_name, col_type],
         )
+
+    # ── Step 8: Compute Pre-aggregations ──
+    run_pre_aggregations(table_name, [c.name for c in metadata.columns])
 
     return dataset_id, table_name, len(df), metadata
 

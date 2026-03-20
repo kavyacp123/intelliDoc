@@ -22,12 +22,22 @@ from app.core.config import settings
 from app.core.database import close_db, init_db
 from app.routes import auth_routes, dataset_routes, query_routes
 
+import os
+
 # ── Logging ──
+os.makedirs("logs", exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+perf_logger = logging.getLogger("performance")
+perf_logger.setLevel(logging.INFO)
+perf_handler = logging.FileHandler("logs/performance.log")
+perf_handler.setFormatter(logging.Formatter("%(asctime)s | %(message)s"))
+perf_logger.addHandler(perf_handler)
 
 
 # ── Lifespan (startup / shutdown) ──

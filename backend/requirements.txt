@@ -32,3 +32,8 @@ httpx
 
 # LLM Providers
 google-genai
+
+# Async Tasks & Caching
+redis
+celery
+
