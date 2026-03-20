@@ -8,20 +8,19 @@ time_column: date
 
 # Metrics — aggregation expressions
 metrics:
-  revenue: "SUM(revenue)"
-  profit: "SUM(revenue - expense)"
-  total_expense: "SUM(expense)"
+  revenue: "SUM(sales)"
+  profit: "SUM(profit)"
+  sales: "SUM(sales)"
+  cogs: "SUM(cogs)"
+  total_profit: "SUM(profit)"
+  total_sales: "SUM(sales)"
   order_count: "COUNT(*)"
-  avg_revenue: "AVG(revenue)"
-  avg_quantity: "AVG(quantity)"
-  total_quantity: "SUM(quantity)"
-  max_revenue: "MAX(revenue)"
-  min_revenue: "MIN(revenue)"
 
 # Dimensions — grouping expressions
 dimensions:
-  region: "region"
-  category: "category"
+  segment: "segment"
+  country: "country"
+  product: "product"
   month: "DATE_TRUNC('month', date)"
   quarter: "DATE_TRUNC('quarter', date)"
   year: "DATE_TRUNC('year', date)"

@@ -34,6 +34,7 @@ class Settings(BaseSettings):
 
     # ── LLM provider (stub | openai | gemini) ──
     LLM_PROVIDER: str = "stub"
+    GEMINI_API_KEY: str | None = None
 
 
 # Singleton instance used across the application

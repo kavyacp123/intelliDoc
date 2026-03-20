@@ -29,3 +29,6 @@ pyyaml
 pytest
 pytest-asyncio
 httpx
+
+# LLM Providers
+google-genai

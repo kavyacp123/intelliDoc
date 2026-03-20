@@ -14,8 +14,12 @@ Swap in a real LLM provider (OpenAI, Gemini, etc.) by implementing
 the same interface.
 """
 
+import json
 import re
 from typing import Any, Dict, List, Optional
+from google import genai
+from google.genai import types
+from app.core.config import settings
 
 from app.models.metadata import TableMetadata
 from app.schemas.query_schema import StructuredIntent
@@ -51,15 +55,65 @@ def generate_intent(
     available_metrics = semantic["available_metrics"]
     available_dimensions = semantic["available_dimensions"]
 
-    # ── Stub/Rule-based intent extraction ──
-    # In production, replace this block with an actual LLM API call.
-    # The prompt would include schema metadata + semantic summary ONLY.
-    intent = _rule_based_intent(
-        question=question,
-        available_metrics=available_metrics,
-        available_dimensions=available_dimensions,
-        schemas=schemas,
-    )
+    # ── Intent extraction ──
+    if settings.LLM_PROVIDER == "gemini":
+        if not settings.GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY is not configured in .env")
+        
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        
+        schema_context = []
+        for s in schemas:
+            cols = [f"{c.name} ({c.dtype})" for c in s.columns]
+            schema_context.append(f"Table: {s.table_name}, Columns: {', '.join(cols)}")
+            
+        prompt = f"""
+        You are an AI data assistant. Convert the user's natural language question into a structured intent JSON.
+        Do not write SQL. Only use the provided metrics and dimensions.
+        
+        Available Metrics: {available_metrics}
+        Available Dimensions: {available_dimensions}
+        Schema Context (Use these columns for filters):
+        {chr(10).join(schema_context)}
+        
+        User Question: {question}
+        
+        Respond ONLY with a valid JSON object matching exactly this schema:
+        {{
+          "metric": "string (from Available Metrics)",
+          "dimension": "string (from Available Dimensions) or null",
+          "filters": [
+            {{"column": "string", "op": "string (e.g. =, >, <)", "value": "string or number"}}
+          ],
+          "time_range": "string or null"
+        }}
+        """
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            ),
+        )
+        try:
+            data = json.loads(response.text)
+            intent = StructuredIntent(
+                metric=data.get("metric", available_metrics[0]),
+                dimension=data.get("dimension"),
+                filters=data.get("filters", []),
+                time_range=data.get("time_range")
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to parse Gemini response: {e}")
+
+    else:
+        # Fallback to rule-based stub
+        intent = _rule_based_intent(
+            question=question,
+            available_metrics=available_metrics,
+            available_dimensions=available_dimensions,
+            schemas=schemas,
+        )
 
     # Attach target table if specified
     if table_name:
