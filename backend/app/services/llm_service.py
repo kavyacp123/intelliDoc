@@ -1,17 +1,24 @@
 """
-LLM Adapter — Direct SQL Generation.
+LLM Adapter — Hybrid Semantic SQL Generation.
 
 Converts a natural language question into a validated DuckDB SQL query.
 
 SECURITY CONTRACT:
   - ONLY schema metadata (column names + types) is sent to the LLM.
+  - Dynamic semantics (inferred formulas) are also injected — still no raw data.
   - NEVER sends raw data values.
-  - LLM is asked to output SQL directly from the schema.
-  - Output is validated before execution (SELECT-only, AST-checked).
+  - Output SQL is validated before execution (SELECT-only, AST-checked).
+
+Flow:
+  1. Receive normalized question + schema metadata + dynamic semantics
+  2. Build a rich prompt with schema + semantic context
+  3. LLM returns raw SQL
+  4. Strip markdown fences if present
+  5. Return SQL for validation
 """
 
 import re
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from google import genai
 from app.core.config import settings
@@ -22,17 +29,19 @@ def generate_sql(
     question: str,
     schemas: List[TableMetadata],
     table_name: Optional[str] = None,
+    semantics: Optional[Dict[str, str]] = None,
 ) -> str:
     """
     Convert a natural language question directly into a DuckDB SQL query.
 
-    Sends ONLY schema metadata (column names + types) to the LLM.
-    Never sends raw data.
+    Sends ONLY schema metadata (column names + types) and inferred semantic
+    formulas to the LLM. Never sends raw data.
 
     Args:
-        question: Natural language question from the user.
+        question: Natural language question (already synonym-normalized).
         schemas: List of table schemas (column names + types only).
         table_name: Optional target table name.
+        semantics: Optional dict of inferred metrics { name: sql_expression }.
 
     Returns:
         A raw SQL string ready for validation and execution.
@@ -40,13 +49,22 @@ def generate_sql(
     if not settings.GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY is not configured in .env")
 
-    # Build schema context string — only metadata, never data
+    # ── Build schema context string (metadata only — never raw data) ──
     schema_lines = []
     for s in schemas:
         cols = ", ".join(f"{c.name} ({c.dtype})" for c in s.columns)
         schema_lines.append(f"Table: {s.table_name}\nColumns: {cols}")
     schema = "\n\n".join(schema_lines)
 
+    # ── Build semantic injection block (confidence gated) ──
+    semantic_block = ""
+    if semantics:
+        lines = ["Inferred business metrics (use these derived formulas when they match the question):"]
+        for name, expr in semantics.items():
+            lines.append(f"  - {name} = {expr}")
+        semantic_block = "\n".join(lines)
+
+    # ── Assemble prompt ──
     prompt = f"""You are an expert data analyst and SQL generator.
 
 Your task is to convert a natural language question into a valid DuckDB SQL query using ONLY the provided dataset schema.
@@ -55,9 +73,17 @@ Your task is to convert a natural language question into a valid DuckDB SQL quer
 DATASET SCHEMA:
 {schema}
 =====================
+{f"""
+=====================
+INFERRED SEMANTIC METRICS:
+{semantic_block}
 
+Use these derived formulas when the user asks about profit, margins, etc.
+If no relevant metric matches, fall back to the raw schema columns.
+=====================
+""" if semantic_block else ""}
 STRICT RULES:
-1. Use ONLY the columns listed in the schema.
+1. Use ONLY the columns listed in the schema above.
 2. DO NOT invent or assume any column names.
 3. DO NOT use any external knowledge.
 4. Generate ONLY a SELECT query (no INSERT, UPDATE, DELETE, DROP).
@@ -72,8 +98,7 @@ QUERY LOGIC:
 - Use ORDER BY when user asks for top/bottom results
 
 DERIVED METRICS (ONLY IF POSSIBLE FROM AVAILABLE COLUMNS):
-- If both "revenue" and "cogs" exist, you may compute:
-  profit = revenue - cogs
+- If both "revenue" and "cogs" exist, you may compute profit = revenue - cogs
 - If only a direct column exists, use it instead of deriving
 
 HANDLING AMBIGUITY:
