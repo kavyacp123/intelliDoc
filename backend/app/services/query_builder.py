@@ -41,6 +41,9 @@ def build_top_n(intent: QueryIntent, table_name: str, tenant_id: str) -> str:
     dim = intent.dimensions[0] if intent.dimensions else None
     group = intent.group_by[0] if intent.group_by else None
     
+    # Use intent.order to determine sort direction (ASC for lowest, DESC for highest)
+    order_dir = "ASC" if intent.order == "asc" else "DESC"
+    
     sql = f"""
     SELECT tenant_id, {group}, {dim}, total
     FROM (
@@ -51,7 +54,7 @@ def build_top_n(intent: QueryIntent, table_name: str, tenant_id: str) -> str:
             {metric_expr} as total,
             ROW_NUMBER() OVER (
                 PARTITION BY tenant_id, {group}
-                ORDER BY {metric_expr} DESC
+                ORDER BY {metric_expr} {order_dir}
             ) as rank_n
         FROM {table_name}
         WHERE tenant_id = '{tenant_id}'

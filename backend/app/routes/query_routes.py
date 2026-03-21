@@ -38,6 +38,7 @@ from app.services.metric_resolver import resolve_metric
 from app.services.time_resolver import resolve_time
 from app.services.query_builder import build_query
 from app.services.table_router import route_query
+from app.services.logic_enforcer import enforce_logic
 
 logger = logging.getLogger(__name__)
 
@@ -192,6 +193,9 @@ async def query_data(
             
             # ── 11. Schema-Aware Table Router ──
             sql = route_query(sql, plan, table_name)
+            
+            # ── 12. Post-SQL Logic Enforcer ──
+            sql = enforce_logic(sql, intent_obj.order, normalized_question)
             
             await CacheService.set_sql({"cache_key": cache_key}, sql)
         except Exception as e:

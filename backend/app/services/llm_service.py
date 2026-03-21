@@ -68,12 +68,19 @@ Rules:
   * group_by (list of column names to group by)
   * time_grain (year, month, day)
   * filters (list of filter objects)
+  * order ("asc" or "desc")
 * NEVER output SQL
 
 Intent Operation Rules:
-* "best", "top", "highest" -> operation = top_n
+* "best", "top", "highest" -> operation = top_n, order = "desc"
+* "worst", "bottom", "lowest", "least" -> operation = top_n, order = "asc"
 * "trend", "over time" -> operation = trend
 * "compare", "vs" -> operation = comparison
+
+ORDER RULES (CRITICAL):
+* "highest", "most", "top", "best", "maximum" -> order = "desc"
+* "lowest", "least", "bottom", "worst", "minimum" -> order = "asc"
+* Default: order = "desc"
 
 CRITICAL FILTER FORMAT:
 * filters MUST ALWAYS be a LIST of objects
@@ -107,6 +114,7 @@ Output:
   "dimensions": [],
   "operation": "aggregate",
   "group_by": [],
+  "order": "desc",
   "filters": [{{"column": "product", "operator": "=", "value": "Paseo"}}, {{"column": "country", "operator": "=", "value": "Mexico"}}]
 }}
 
@@ -118,7 +126,20 @@ Output:
   "operation": "top_n",
   "group_by": ["year"],
   "rank": 1,
+  "order": "desc",
   "time_grain": "year",
+  "filters": []
+}}
+
+Input: "lowest revenue category by region"
+Output:
+{{
+  "metric": "revenue",
+  "dimensions": ["category"],
+  "operation": "top_n",
+  "group_by": ["region"],
+  "rank": 1,
+  "order": "asc",
   "filters": []
 }}
 """
