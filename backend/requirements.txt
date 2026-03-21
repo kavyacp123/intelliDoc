@@ -31,7 +31,7 @@ pytest-asyncio
 httpx
 
 # LLM Providers
-google-genai
+groq
 
 # Async Tasks & Caching
 redis

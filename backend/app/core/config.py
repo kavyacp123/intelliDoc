@@ -33,9 +33,10 @@ class Settings(BaseSettings):
     # ── Rate limiting ──
     RATE_LIMIT_PER_MINUTE: int = 60
 
-    # ── LLM provider (stub | openai | gemini) ──
-    LLM_PROVIDER: str = "stub"
-    GEMINI_API_KEY: str | None = None
+    # ── LLM provider (stub | groq) ──
+    LLM_PROVIDER: str = "groq"
+    GROQ_API_KEY: str | None = None
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
 
 # Singleton instance used across the application

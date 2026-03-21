@@ -1,5 +1,5 @@
 """
-LLM Adapter — Hybrid Semantic SQL Generation.
+LLM Adapter — Hybrid Semantic SQL Generation via Groq.
 
 Converts a natural language question into a validated DuckDB SQL query.
 
@@ -12,7 +12,7 @@ SECURITY CONTRACT:
 Flow:
   1. Receive normalized question + schema metadata + dynamic semantics
   2. Build a rich prompt with schema + semantic context
-  3. LLM returns raw SQL
+  3. Groq LLM returns raw SQL
   4. Strip markdown fences if present
   5. Return SQL for validation
 """
@@ -20,7 +20,7 @@ Flow:
 import re
 from typing import Dict, List, Optional
 
-from google import genai
+from groq import Groq
 from app.core.config import settings
 from app.models.metadata import TableMetadata
 
@@ -32,7 +32,7 @@ def generate_sql(
     semantics: Optional[Dict[str, str]] = None,
 ) -> str:
     """
-    Convert a natural language question directly into a DuckDB SQL query.
+    Convert a natural language question directly into a DuckDB SQL query using Groq.
 
     Sends ONLY schema metadata (column names + types) and inferred semantic
     formulas to the LLM. Never sends raw data.
@@ -46,8 +46,8 @@ def generate_sql(
     Returns:
         A raw SQL string ready for validation and execution.
     """
-    if not settings.GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY is not configured in .env")
+    if not settings.GROQ_API_KEY:
+        raise ValueError("GROQ_API_KEY is not configured in .env")
 
     # ── Build schema context string (metadata only — never raw data) ──
     schema_lines = []
@@ -107,9 +107,7 @@ HANDLING AMBIGUITY:
 
 OUTPUT FORMAT:
 - Return ONLY the SQL query
-- No explanation
-- No comments
-- No markdown
+- No explanation, no comments, no markdown
 
 =====================
 USER QUESTION:
@@ -117,13 +115,23 @@ USER QUESTION:
 =====================
 """
 
-    client = genai.Client(api_key=settings.GEMINI_API_KEY)
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=prompt,
+    client = Groq(api_key=settings.GROQ_API_KEY)
+    response = client.chat.completions.create(
+        model=settings.GROQ_MODEL,
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a precise SQL generator. Output only valid DuckDB SQL. No markdown, no explanation.",
+            },
+            {
+                "role": "user",
+                "content": prompt,
+            },
+        ],
+        temperature=0,  # Deterministic output for SQL
     )
 
-    sql = response.text.strip()
+    sql = response.choices[0].message.content.strip()
 
     # Strip markdown code fences if model adds them anyway
     sql = re.sub(r"^```[a-zA-Z]*\n?", "", sql)

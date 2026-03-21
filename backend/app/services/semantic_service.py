@@ -9,7 +9,7 @@ Features:
   3. Redis Caching           — caches inferred semantics per dataset (no recomputation)
   4. Confidence Gating       — only injects semantics if meaningful ones were found
 
-This makes the semantic layer work for ANY uploaded dataset automatically.
+Backward-compatible stubs are included for legacy components (query_builder_service, tasks.py).
 """
 
 import json
@@ -232,3 +232,58 @@ def format_semantics_for_prompt(semantics: Dict[str, str]) -> str:
     for name, expr in semantics.items():
         lines.append(f"  - {name} = {expr}")
     return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────
+# BACKWARD-COMPATIBILITY STUBS
+# These are kept so legacy components (query_builder_service, tasks.py)
+# continue to import without errors. They use safe hardcoded defaults.
+# ─────────────────────────────────────────────
+
+# Hardcoded fallback metrics (used by query_builder_service)
+_STATIC_METRICS: Dict[str, str] = {
+    "revenue":  "SUM(revenue)",
+    "profit":   "SUM(revenue - expense)",
+    "sales":    "SUM(revenue)",
+    "expense":  "SUM(expense)",
+    "quantity": "SUM(quantity)",
+}
+
+# Hardcoded fallback dimensions (used by query_builder_service)
+_STATIC_DIMENSIONS: Dict[str, str] = {
+    "region":        "region",
+    "country":       "country",
+    "product":       "product",
+    "category":      "category",
+    "customer_type": "customer_type",
+    "month":         "DATE_TRUNC('month', date)",
+    "quarter":       "DATE_TRUNC('quarter', date)",
+    "year":          "DATE_TRUNC('year', date)",
+    "day":           "DATE_TRUNC('day', date)",
+}
+
+_STATIC_TIME_COLUMN = "date"
+
+
+def get_metric_expression(metric: str) -> Optional[str]:
+    """Legacy: Return SQL expression for a metric name."""
+    return _STATIC_METRICS.get(metric)
+
+
+def get_dimension_expression(dimension: str) -> Optional[str]:
+    """Legacy: Return SQL expression for a dimension name."""
+    return _STATIC_DIMENSIONS.get(dimension)
+
+
+def get_time_column() -> str:
+    """Legacy: Return the default time column name."""
+    return _STATIC_TIME_COLUMN
+
+
+def get_semantic_summary() -> dict:
+    """Legacy: Return available metrics and dimensions as lists."""
+    return {
+        "available_metrics": list(_STATIC_METRICS.keys()),
+        "available_dimensions": list(_STATIC_DIMENSIONS.keys()),
+    }
+

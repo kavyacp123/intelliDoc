@@ -123,11 +123,20 @@ async def query_data(
     conn = get_connection()
     all_duck_tables = [r[0] for r in conn.execute("SHOW TABLES").fetchall()]
 
+    # DuckDB views are separate from tables — include them too
+    # (the logical view dataset_xxx lives here, not in SHOW TABLES)
+    try:
+        all_duck_views = [r[0] for r in conn.execute("SHOW VIEWS").fetchall()]
+    except Exception:
+        all_duck_views = []
+
+    all_duck_objects = set(all_duck_tables) | set(all_duck_views)
+
     allowed_tables = set()
     for s in schemas:
-        allowed_tables.add(s.table_name)
-        for t in all_duck_tables:
-            if t.startswith(f"{s.table_name}_"):
+        allowed_tables.add(s.table_name)          # logical view name (e.g. dataset_xxx)
+        for t in all_duck_objects:
+            if t.startswith(f"{s.table_name}_"):   # monthly partitions
                 allowed_tables.add(t)
 
     allowed_columns = {"tenant_id"}
