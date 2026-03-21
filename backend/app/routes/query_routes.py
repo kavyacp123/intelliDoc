@@ -123,6 +123,19 @@ async def query_data(
                 table_name=table_name,
                 semantics=semantics if semantics else None,
             )
+
+            # ── 5.5 Normalize filters (LLM safety net) ──
+            raw_filters = intent_json.get("filters")
+            if isinstance(raw_filters, dict):
+                # Convert {"product": "Paseo"} → [{"column": "product", "operator": "=", "value": "Paseo"}]
+                intent_json["filters"] = [
+                    {"column": k, "operator": "=", "value": v}
+                    for k, v in raw_filters.items()
+                ]
+                logger.info("Normalized filters from dict to list: %s", intent_json["filters"])
+            elif raw_filters is None:
+                intent_json["filters"] = []
+
             intent_obj = QueryIntent(**intent_json)
             
             # Construct a schema mapping for the Resolvers and Hybrid Engine
@@ -179,6 +192,7 @@ async def query_data(
         except Exception as e:
             if isinstance(e, HTTPException):
                 raise
+            logger.error("Query generation failed: %s", e, exc_info=True)
             raise HTTPException(
                 status_code=422,
                 detail=f"Could not generate SQL from question: {str(e)}",

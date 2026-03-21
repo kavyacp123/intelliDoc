@@ -9,7 +9,7 @@ def hash_intent(intent: QueryIntent) -> str:
         "m": intent.metric,
         "o": intent.operation,
         "g": intent.group_by,
-        "f": [f.model_dump() for f in intent.filters],
+        "f": intent.filters,
         "t": intent.time_grain
     }
     return hashlib.md5(json.dumps(data, sort_keys=True).encode()).hexdigest()
