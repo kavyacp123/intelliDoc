@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Sign In | intelliDoc</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-container": "#eceef0",
+              "primary-container": "#131b2e",
+              "on-error-container": "#93000a",
+              "on-secondary-fixed": "#001a42",
+              "background": "#f7f9fb",
+              "tertiary-fixed-dim": "#dec29a",
+              "surface-container-high": "#e6e8ea",
+              "on-background": "#191c1e",
+              "surface-dim": "#d8dadc",
+              "error": "#ba1a1a",
+              "on-tertiary-fixed-variant": "#574425",
+              "on-tertiary-fixed": "#271901",
+              "on-secondary-container": "#fefcff",
+              "tertiary": "#000000",
+              "on-primary": "#ffffff",
+              "on-primary-fixed-variant": "#3f465c",
+              "surface-container-lowest": "#ffffff",
+              "surface-bright": "#f7f9fb",
+              "secondary": "#0058be",
+              "primary-fixed": "#dae2fd",
+              "primary": "#000000",
+              "surface-tint": "#565e74",
+              "on-tertiary-container": "#98805d",
+              "on-primary-fixed": "#131b2e",
+              "on-surface": "#191c1e",
+              "inverse-on-surface": "#eff1f3",
+              "secondary-fixed": "#d8e2ff",
+              "on-primary-container": "#7c839b",
+              "surface-variant": "#e0e3e5",
+              "outline-variant": "#c6c6cd",
+              "secondary-fixed-dim": "#adc6ff",
+              "surface-container-low": "#f2f4f6",
+              "on-surface-variant": "#45464d",
+              "inverse-primary": "#bec6e0",
+              "inverse-surface": "#2d3133",
+              "error-container": "#ffdad6",
+              "tertiary-container": "#271901",
+              "primary-fixed-dim": "#bec6e0",
+              "on-error": "#ffffff",
+              "tertiary-fixed": "#fcdeb5",
+              "outline": "#76777d",
+              "on-secondary-fixed-variant": "#004395",
+              "surface-container-highest": "#e0e3e5",
+              "surface": "#f7f9fb",
+              "on-secondary": "#ffffff",
+              "on-tertiary": "#ffffff",
+              "secondary-container": "#2170e4"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .glass-effect {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(24px);
+      }
+      .atmospheric-shadow {
+        box-shadow: 0px 20px 40px rgba(15, 23, 42, 0.06);
+      }
+      .primary-gradient {
+        background: linear-gradient(135deg, #000000 0%, #131b2e 100%);
+      }
+    </style>
+</head>
+<body class="bg-surface font-body text-on-surface min-h-screen flex flex-col">
+<!-- TopNavBar Suppressed for Login Focus - Identity Anchor Only -->
+<header class="w-full py-8 px-6 max-w-7xl mx-auto flex justify-center md:justify-start items-center">
+<div class="flex items-center gap-2">
+<span class="text-2xl font-headline font-extrabold tracking-tighter text-primary">intelliDoc</span>
+</div>
+</header>
+<!-- Main Content: Login Canvas -->
+<main class="flex-grow flex items-center justify-center px-6 py-12">
+<div class="w-full max-w-md">
+<!-- Login Card -->
+<div class="bg-surface-container-lowest atmospheric-shadow rounded-xl p-8 md:p-10 border border-outline-variant/10">
+<div class="mb-10 text-center md:text-left">
+<h1 class="font-headline text-3xl font-bold tracking-tight text-on-surface mb-2">Welcome Back</h1>
+<p class="text-on-surface-variant text-sm font-medium">Please enter your details to access your intelligence dashboard.</p>
+</div>
+<!-- Error message -->
+<div id="error-msg" class="hidden mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm font-medium"></div>
+<form id="login-form" class="space-y-6">
+<!-- Email Field -->
+<div class="space-y-2">
+<label class="block text-xs font-semibold uppercase tracking-wider text-on-surface-variant" for="email">Email Address</label>
+<div class="relative">
+<input class="w-full px-4 py-3 bg-surface-container-low border-none rounded-lg focus:ring-2 focus:ring-secondary/20 transition-all text-sm tabular-nums" id="email" name="email" placeholder="name@company.com" type="email" required/>
+</div>
+</div>
+<!-- Password Field -->
+<div class="space-y-2">
+<div class="flex justify-between items-center">
+<label class="block text-xs font-semibold uppercase tracking-wider text-on-surface-variant" for="password">Password</label>
+<a class="text-xs font-semibold text-secondary hover:underline transition-all" href="#">Forgot password?</a>
+</div>
+<div class="relative">
+<input class="w-full px-4 py-3 bg-surface-container-low border-none rounded-lg focus:ring-2 focus:ring-secondary/20 transition-all text-sm" id="password" name="password" placeholder="••••••••" type="password" required/>
+</div>
+</div>
+<!-- Remember Me -->
+<div class="flex items-center gap-2">
+<input class="w-4 h-4 rounded-sm border-outline-variant text-primary focus:ring-primary transition-all" id="remember" name="remember" type="checkbox"/>
+<label class="text-sm font-medium text-on-surface-variant" for="remember">Remember me for 30 days</label>
+</div>
+<!-- Sign In CTA -->
+<button id="submit-btn" class="w-full primary-gradient text-on-primary font-semibold py-4 rounded-lg atmospheric-shadow active:scale-[0.98] transition-all duration-150 flex items-center justify-center gap-2" type="submit">
+<span id="btn-text">Sign In</span>
+<span class="material-symbols-outlined text-[20px]" data-icon="login">login</span>
+</button>
+</form>
+<!-- Footer/Secondary CTA within Card -->
+<div class="mt-8 pt-8 border-t border-outline-variant/15 text-center">
+<p class="text-sm text-on-surface-variant font-medium">
+                        Don't have an account? 
+                        <a class="text-secondary font-bold hover:underline transition-all ml-1" href="../register_intellidoc/code.html">Sign up</a>
+</p>
+</div>
+</div>
+<!-- Security Trust Indicator -->
+<div class="mt-8 flex items-center justify-center gap-4 opacity-40">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px]" data-icon="lock" data-weight="fill" style="font-variation-settings: 'FILL' 1;">lock</span>
+<span class="text-[10px] font-bold uppercase tracking-[0.1em]">256-bit AES</span>
+</div>
+<div class="w-1 h-1 bg-on-surface-variant rounded-full"></div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px]" data-icon="verified_user" data-weight="fill" style="font-variation-settings: 'FILL' 1;">verified_user</span>
+<span class="text-[10px] font-bold uppercase tracking-[0.1em]">ISO 27001</span>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="w-full py-8 px-6 flex flex-col md:flex-row justify-between items-center gap-4 max-w-7xl mx-auto border-t border-slate-200/10 bg-slate-50 dark:bg-slate-950">
+<div class="font-manrope font-semibold text-slate-400">intelliDoc</div>
+<div class="flex flex-wrap justify-center gap-6">
+<a class="font-inter text-xs tabular-nums text-slate-500 hover:text-blue-600 transition-colors" href="#">Privacy Policy</a>
+<a class="font-inter text-xs tabular-nums text-slate-500 hover:text-blue-600 transition-colors" href="#">Terms of Service</a>
+<a class="font-inter text-xs tabular-nums text-slate-500 hover:text-blue-600 transition-colors" href="#">Security Architecture</a>
+<a class="font-inter text-xs tabular-nums text-slate-500 hover:text-blue-600 transition-colors" href="#">Cookie Settings</a>
+</div>
+<div class="font-inter text-xs tabular-nums text-slate-400">© 2024 intelliDoc Financial Intelligence.</div>
+</footer>
+
+<script>
+  const API_BASE = 'http://localhost:8000';
+
+  // If already logged in, go to dashboard
+  if (localStorage.getItem('access_token')) {
+    window.location.href = '../intellidoc_analytics_dashboard/code.html';
+  }
+
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('error-msg');
+    const btnText = document.getElementById('btn-text');
+    errEl.classList.add('hidden');
+    btnText.textContent = 'Signing in...';
+
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
+    // OAuth2 requires form-encoded body
+    const body = new URLSearchParams();
+    body.append('username', email);
+    body.append('password', password);
+
+    try {
+      const res = await fetch(`${API_BASE}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        errEl.textContent = data.detail || 'Invalid email or password.';
+        errEl.classList.remove('hidden');
+        btnText.textContent = 'Sign In';
+        return;
+      }
+
+      localStorage.setItem('access_token', data.access_token);
+      window.location.href = '../intellidoc_analytics_dashboard/code.html';
+    } catch (err) {
+      errEl.textContent = 'Could not connect to server. Is the backend running?';
+      errEl.classList.remove('hidden');
+      btnText.textContent = 'Sign In';
+    }
+  });
+</script>
+</body></html>
