@@ -71,6 +71,13 @@ def init_db() -> None:
             PRIMARY KEY (dataset_id, column_name)
         )
     """)
+    
+    # Migration: Add distinct_count if missing
+    try:
+        conn.execute("ALTER TABLE dataset_metadata ADD COLUMN distinct_count INTEGER DEFAULT 0")
+    except Exception:
+        # Column likely already exists
+        pass
 
 
 def close_db() -> None:

@@ -24,7 +24,7 @@ from app.core.database import get_connection
 from datetime import datetime
 
 
-def build_query(intent: StructuredIntent) -> str:
+def build_query(intent: StructuredQueryIntent) -> str:
     """
     Build a SQL query from a StructuredIntent.
 

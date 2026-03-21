@@ -1,0 +1,23 @@
+ 
+ -------------- celery@Kavyas-MacBook-Air.local v5.6.2 (recovery)
+--- ***** ----- 
+-- ******* ---- macOS-26.3.1-arm64-arm-64bit-Mach-O 2026-03-21 17:50:08
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         analytics_worker:0x10bb45d30
+- ** ---------- .> transport:   redis://localhost:6379/0
+- ** ---------- .> results:     redis://localhost:6379/0
+- *** --- * --- .> concurrency: 10 (prefork)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> celery           exchange=celery(direct) key=celery
+                
+
+[tasks]
+  . app.worker.tasks.run_query_task
+
+[2026-03-21 17:50:08,954: INFO/MainProcess] Connected to redis://localhost:6379/0
+[2026-03-21 17:50:08,956: INFO/MainProcess] mingle: searching for neighbors
+[2026-03-21 17:50:09,961: INFO/MainProcess] mingle: all alone
+[2026-03-21 17:50:09,988: INFO/MainProcess] celery@Kavyas-MacBook-Air.local ready.

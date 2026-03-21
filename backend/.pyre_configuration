@@ -1,0 +1,10 @@
+{
+    "site_package_search_strategy": "all",
+    "source_directories": [
+        "app"
+    ],
+    "search_path": [
+        "venv/lib/python3.14/site-packages"
+    ],
+    "python_path": "venv/bin/python"
+}

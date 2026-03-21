@@ -35,3 +35,30 @@ class QueryResponse(BaseModel):
     sql: str  # the validated/rewritten SQL that was actually executed
     chart_hint: Optional[str] = None  # e.g. "bar", "line", "pie"
     row_count: int = 0
+    # Optional warnings (e.g. fuzzy column correction notices)
+    warnings: List[str] = []
+    # Available fields in the dataset (populated on validation errors or when empty results)
+    available_fields: Optional[List[str]] = None
+    # execution profile mappings
+    execution_plan: Optional[Dict[str, Any]] = None
+    explanation: Optional[Dict[str, Any]] = None
+    insights: List[str] = []
+
+
+class AsyncJobResponse(BaseModel):
+    """Returned when a query is dispatched to the background (V4)."""
+    job_id: str
+    status: str
+    message: str
+
+
+class SchemaHintResponse(BaseModel):
+    """
+    Returned when a query fails due to an unknown column.
+    Provides friendly guidance instead of a raw error.
+    """
+    error: str
+    did_you_mean: Optional[str] = None
+    available_columns: List[str] = []
+    inferred_metrics: List[str] = []
+    tip: str = ""

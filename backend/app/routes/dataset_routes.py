@@ -2,9 +2,9 @@
 Dataset API routes.
 
 Endpoints:
-  POST /upload             — Upload a structured dataset (CSV, Excel, JSON)
-  GET  /datasets           — List all datasets for the current user
-  GET  /datasets/{id}/schema — Get the schema metadata for a dataset
+  POST /upload                   — Upload a structured dataset (CSV, Excel, JSON)
+  GET  /datasets                 — List all datasets for the current user
+  GET  /datasets/{id}/schema     — Rich schema discovery: columns, metrics, sample values
 """
 
 from typing import List
@@ -20,6 +20,7 @@ from app.schemas.dataset_schema import (
     DatasetUploadResponse,
 )
 from app.services import file_service, schema_service
+from app.services.semantic_service import infer_semantics, _STATIC_DIMENSIONS
 
 router = APIRouter(tags=["Datasets"])
 
@@ -119,23 +120,26 @@ async def list_datasets(current_user: str = Depends(get_current_user)):
 @router.get(
     "/datasets/{dataset_id}/schema",
     response_model=DatasetSchemaResponse,
-    summary="Get dataset schema",
+    summary="Get rich schema info for a dataset",
 )
 async def get_dataset_schema(
     dataset_id: str,
     current_user: str = Depends(get_current_user),
 ):
     """
-    Retrieve the schema metadata for a specific dataset.
+    Discover everything you can query about a dataset:
+      - Column names and types
+      - Inferred business metrics (profit, total_revenue, etc.)
+      - Queryable dimensions (region, month, year, etc.)
+      - Sample values for categorical columns
 
-    Returns column names and types ONLY — never raw data.
-    Enforces tenant isolation.
+    Use this before querying to understand what questions you can ask.
     """
     conn = get_connection()
 
     # Verify ownership
     row = conn.execute(
-        "SELECT tenant_id FROM datasets WHERE dataset_id = ?",
+        "SELECT tenant_id, table_name FROM datasets WHERE dataset_id = ?",
         [dataset_id],
     ).fetchone()
 
@@ -151,6 +155,7 @@ async def get_dataset_schema(
             detail="Access denied — you do not own this dataset",
         )
 
+    table_name = row[1]
     metadata = schema_service.get_dataset_schema(dataset_id)
     if metadata is None:
         raise HTTPException(
@@ -158,10 +163,47 @@ async def get_dataset_schema(
             detail="Schema metadata not found",
         )
 
+    col_names = [c.name for c in metadata.columns]
+    col_types = {c.name: c.dtype for c in metadata.columns}
+
+    # ── Infer business metrics from actual schema ──
+    inferred = infer_semantics(metadata)
+    inferred_metric_names = list(inferred.keys())
+
+    # ── Find available dimensions (columns that match known dimension keys) ──
+    available_dims = [
+        dim for dim in _STATIC_DIMENSIONS.keys()
+        if dim in col_names
+    ]
+    # Also add any string/varchar columns that could act as dimensions
+    for col in metadata.columns:
+        if col.dtype.upper() in ("VARCHAR", "TEXT", "STRING") and col.name not in available_dims:
+            available_dims.append(col.name)
+
+    # ── Sample distinct values for categorical columns (max 5 each) ──
+    sample_values = {}
+    categorical_types = {"varchar", "text", "string"}
+    for col in metadata.columns:
+        if col.dtype.lower() in categorical_types:
+            try:
+                rows = conn.execute(
+                    f'SELECT DISTINCT "{col.name}" FROM "{table_name}" WHERE "{col.name}" IS NOT NULL LIMIT 5'
+                ).fetchall()
+                sample_values[col.name] = [r[0] for r in rows]
+            except Exception:
+                pass  # non-fatal — skip if column query fails
+
+    # ── Build example tip ──
+    tip_metric = inferred_metric_names[0] if inferred_metric_names else (col_names[0] if col_names else "revenue")
+    tip_dim = available_dims[0] if available_dims else "region"
+    tip = f'Try asking: "Show {tip_metric} by {tip_dim}"'
+
     return DatasetSchemaResponse(
         dataset_id=dataset_id,
-        table_name=metadata.table_name,
-        columns=[
-            ColumnSchema(name=c.name, type=c.dtype) for c in metadata.columns
-        ],
+        table_name=table_name,
+        columns=[ColumnSchema(name=c.name, type=c.dtype) for c in metadata.columns],
+        inferred_metrics=inferred_metric_names,
+        available_dimensions=available_dims,
+        sample_values=sample_values,
+        tip=tip,
     )

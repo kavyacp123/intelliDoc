@@ -1,46 +1,49 @@
-"""
-Query API routes — Hybrid Semantic SQL Generation Pipeline.
-
-Full flow:
-  1. Authenticate & resolve dataset
-  2. Fetch schema metadata (never raw data)
-  3. Normalize question with synonym mapping
-  4. Fetch/compute dynamic semantics (Redis-cached per dataset)
-  5. LLM generates SQL using schema + semantics
-  6. Validate SQL (SELECT-only, whitelisted columns/tables)
-  7. Inject tenant_id via Query Rewriter (multi-tenancy isolation)
-  8. Execute against DuckDB & cache result
-"""
-
 import logging
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
 
 from app.core.database import get_connection
 from app.core.security import get_current_user
-from app.schemas.query_schema import QueryRequest, QueryResponse
+from app.schemas.query_schema import (
+    AsyncJobResponse,
+    QueryRequest,
+    QueryResponse,
+    SchemaHintResponse,
+)
+from app.models.metadata import TableMetadata
+from app.models.intent import QueryIntent
 from app.services import (
     execution_service,
     rewrite_service,
     schema_service,
+    explanation_service,
     validator_service,
+    llm_service,
+    semantic_service,
 )
-from app.services import llm_service
-from app.services import semantic_service
+from app.services.semantic_service import fuzzy_match_column, infer_semantics
 from app.services.cache_service import CacheService
 from app.worker.tasks import run_query_task
 from app.worker.celery_app import celery_app
+from app.services.query_planner import QueryPlanner
+from app.services.query_guard import enforce_budget
+from app.services.insight_service import generate_insights
+from app.services.cost_model import update_cost_model
+from app.services.cost_estimator import hash_intent
+from app.services.intent_processor import enhance_intent
+from app.services.intent_validator import validate_intent, IntentValidationError
+from app.services.metric_resolver import resolve_metric
+from app.services.time_resolver import resolve_time
+from app.services.query_builder import build_query
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Query"])
 
 
-class AsyncJobResponse(BaseModel):
-    job_id: str
-    status: str
-    message: str
+# Removed duplicate AsyncJobResponse
 
 
 @router.post(
@@ -71,7 +74,7 @@ async def query_data(
         row_count = row[2]
 
     # ── 2. Fetch schema metadata (no raw data) ──
-    schemas = []
+    schemas: list[TableMetadata] = []
     if dataset_id:
         metadata = schema_service.get_dataset_schema(dataset_id)
         schemas = [metadata] if metadata else []
@@ -102,60 +105,116 @@ async def query_data(
     cache_key = f"{current_user}:{table_name}:{normalized_question}"
     sql = await CacheService.get_sql({"cache_key": cache_key})
 
+    allowed_columns = {"tenant_id"}
+    for s in schemas:
+        for c in s.columns:
+            allowed_columns.add(c.name)
+
+    execution_plan = {"strategy": "cached_sql", "execution_mode": "sync", "estimated_cost": 0}
+    explanation = {"optimization": "Retrieved from parsed semantic SQL cache"}
+    insights = []
+
     if not sql:
         try:
-            sql = llm_service.generate_sql(
+            # ── 5. LLM -> Intent JSON ──
+            intent_json = llm_service.generate_intent_json(
                 question=normalized_question,
                 schemas=schemas,
                 table_name=table_name,
                 semantics=semantics if semantics else None,
             )
+            intent_obj = QueryIntent(**intent_json)
+            
+            # Construct a schema mapping for the Resolvers and Hybrid Engine
+            schema_dict = {
+                "table_name": table_name,
+                "metrics": [c.name for c in schemas[0].columns if c.dtype.lower() in ("int", "float", "double", "bigint", "integer")],
+                "dimensions": [c.name for c in schemas[0].columns if c.dtype.lower() in ("string", "varchar", "text")],
+                "time_dimensions": [c.name for c in schemas[0].columns if c.dtype.lower() in ("datetime", "date", "timestamp")],
+            }
+            
+            # ── 6. Intent Processor (Hybrid Rules) ──
+            intent_obj = enhance_intent(intent_obj, normalized_question, schema_dict)
+            
+            # ── 7. Resolvers ──
+            resolve_metric(intent_obj, schema_dict)
+            resolve_time(intent_obj, schema_dict)
+            
+            # ── 8. Intent Validator ──
+            allowed_columns_for_intent = set(allowed_columns)
+            if semantics:
+                allowed_columns_for_intent.update(semantics.keys())
+
+            try:
+                validate_intent(intent_obj, allowed_columns_for_intent)
+            except IntentValidationError as e:
+                # ── Friendly column-not-found response ──
+                suggestion = fuzzy_match_column(e.invalid_column, list(allowed_columns_for_intent)) if e.invalid_column else None
+                inferred = infer_semantics(schemas[0]) if schemas else {}
+                metric_names = list(inferred.keys())
+                available_cols = sorted(allowed_columns_for_intent - {"tenant_id"})
+                
+                tip = f'Try: "Show {suggestion or available_cols[0]} by region" or call GET /datasets/{{id}}/schema'
+                hint = SchemaHintResponse(
+                    error=e.message,
+                    did_you_mean=suggestion,
+                    available_columns=available_cols,
+                    inferred_metrics=metric_names,
+                    tip=tip,
+                )
+                return JSONResponse(status_code=400, content=hint.model_dump())
+
+            # ── 9. Query Optimizer Layer (V4 Multi-Plan) ──
+            plan = QueryPlanner.plan(intent_obj, schema_dict, schemas[0].to_dict())
+            
+            # ── 9.5 Budget Enforcer ──
+            enforce_budget(plan)
+            
+            execution_plan = plan
+            explanation = explanation_service.generate_explanation(intent_obj, plan)
+            
+            # ── 10. Query Builder ──
+            sql = build_query(intent_obj, plan, current_user)
             await CacheService.set_sql({"cache_key": cache_key}, sql)
         except Exception as e:
+            if isinstance(e, HTTPException):
+                raise
             raise HTTPException(
                 status_code=422,
                 detail=f"Could not generate SQL from question: {str(e)}",
             )
 
     logger.info("Generated SQL:\n%s", sql)
-
-    # ── 6. Validate SQL (SELECT-only, whitelisted tables/columns) ──
+    
+    # ── 6. AST SQL Security Validation ──
+    # We still validate the built SQL securely as a final sanity check against injections
     conn = get_connection()
     all_duck_tables = [r[0] for r in conn.execute("SHOW TABLES").fetchall()]
-
-    # DuckDB views are separate from tables — include them too
-    # (the logical view dataset_xxx lives here, not in SHOW TABLES)
     try:
         all_duck_views = [r[0] for r in conn.execute("SHOW VIEWS").fetchall()]
     except Exception:
         all_duck_views = []
-
     all_duck_objects = set(all_duck_tables) | set(all_duck_views)
 
     allowed_tables = set()
     for s in schemas:
-        allowed_tables.add(s.table_name)          # logical view name (e.g. dataset_xxx)
+        allowed_tables.add(s.table_name)
         for t in all_duck_objects:
-            if t.startswith(f"{s.table_name}_"):   # monthly partitions
+            if t.startswith(f"{s.table_name}_"):
                 allowed_tables.add(t)
-
-    allowed_columns = {"tenant_id"}
-    for s in schemas:
-        for c in s.columns:
-            allowed_columns.add(c.name)
 
     try:
         validator_service.validate_query(sql, allowed_tables, allowed_columns)
     except validator_service.QueryValidationError as e:
         raise HTTPException(
-            status_code=400, detail=f"Query validation failed: {str(e)}"
+            status_code=400, detail=f"Query secondary validation failed: {str(e)}"
         )
 
-    # ── 7. Inject tenant_id for multi-tenant isolation ──
-    safe_sql = rewrite_service.rewrite_query(sql, current_user, table_name)
+    # ── 11. Multitenancy isolation is inherently solved by Query Builder ──
+    safe_sql = sql
     chart_hint = llm_service._infer_chart_hint(normalized_question)
 
-    # ── 8. Result Cache ──
+    # ── 12. Result Cache ──
     cached_result = await CacheService.get_result(safe_sql, current_user)
     if cached_result is not None:
         logger.info("Result cache hit.")
@@ -164,22 +223,44 @@ async def query_data(
             sql=safe_sql,
             chart_hint=chart_hint,
             row_count=len(cached_result),
+            execution_plan={"strategy": "cache", "execution_mode": "sync", "estimated_cost": 0},
+            explanation={"optimization": "Instant read from query cache mapping"},
+            insights=[]
         )
 
-    # ── Async Routing for Heavy Queries (> 1M rows) ──
-    if row_count > 1000000:
-        logger.info("Dataset > 1M rows — dispatching async Celery task.")
+    # ── Async Routing for Heavy Queries ──
+    if execution_plan.get("execution_mode") == "async" or row_count > 1000000:
+        logger.info("Dataset threshold trigger — dispatching async Celery task.")
         job = run_query_task.delay({"sql": safe_sql}, current_user)
         return AsyncJobResponse(
             job_id=job.id,
             status="processing",
-            message="Query is crunching a large dataset in the background.",
+            message="Query is crunching a large dataset in the background natively.",
         )
 
-    # ── 9. Execute SQL ──
+    # ── 9. Execute SQL with Feedback Loop ──
+    import time
+    start_exec = time.time()
     try:
         data = execution_service.execute_query(safe_sql)
+        duration = time.time() - start_exec
+        
+        # Update self-learning cost model
+        try:
+            # We need the intent_obj to be available, or we hash the safe_sql
+            # For simplicity in V4, we update the model if intent_obj was created
+            if 'intent_obj' in locals():
+                update_cost_model(hash_intent(locals()['intent_obj']), duration)
+        except Exception as feedback_err:
+            logger.warning("Feedback loop update failed: %s", feedback_err)
+
         await CacheService.set_result(safe_sql, current_user, data)
+        
+        # Generate Insights (V4)
+        insights = []
+        if 'intent_obj' in locals():
+            insights = generate_insights(data, locals()['intent_obj'])
+
     except execution_service.QueryExecutionError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -188,8 +269,70 @@ async def query_data(
         sql=safe_sql,
         chart_hint=chart_hint,
         row_count=len(data),
+        execution_plan=execution_plan,
+        explanation=explanation,
+        insights=insights
     )
 
+
+@router.post("/query/validate-raw", summary="Test query validation logic directly")
+async def validate_raw_query(
+    request: QueryRequest,  # reusing this just for convention, we treat question as SQL
+    current_user: str = Depends(get_current_user),
+):
+    """Bypass LLM and directly test the validation engine with raw SQL."""
+    conn = get_connection()
+    dataset_id = request.dataset_id
+    
+    if not dataset_id:
+        raise HTTPException(status_code=400, detail="dataset_id required for raw test")
+        
+    row = conn.execute(
+        "SELECT table_name FROM datasets WHERE dataset_id = ? AND tenant_id = ?",
+        [dataset_id, current_user],
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+        
+    table_name = row[0]
+    schema = schema_service.get_dataset_schema(dataset_id)
+    if not schema:
+        raise HTTPException(status_code=404, detail="Schema not found for test")
+    schemas = [schema]
+    
+    allowed_tables = {table_name}
+    allowed_columns = {"tenant_id"}
+    for c in schemas[0].columns:
+        allowed_columns.add(c.name)
+        
+    warnings = []
+    try:
+        validator_service.validate_query(request.question, allowed_tables, allowed_columns)
+        return {"status": "valid", "sql": request.question}
+    except validator_service.QueryValidationError as e:
+        err_str = str(e)
+        if "Column not allowed" in err_str or "column not allowed" in err_str.lower():
+            bad_col = None
+            import re as _re
+            match = _re.search(r"Column not allowed: ([\w]+)", err_str, _re.IGNORECASE)
+            if match:
+                bad_col = match.group(1)
+
+            available_cols = sorted(allowed_columns - {"tenant_id"})
+            suggestion = fuzzy_match_column(bad_col, list(allowed_columns)) if bad_col else None
+            
+            inferred = infer_semantics(schemas[0])
+            metric_names = list(inferred.keys())
+            
+            hint = SchemaHintResponse(
+                error=f"Column '{bad_col}' not found in this dataset." if bad_col else err_str,
+                did_you_mean=suggestion,
+                available_columns=available_cols,
+                inferred_metrics=metric_names,
+                tip=f'Try: "Show {suggestion or available_cols[0]} by region" or call GET /datasets/{{id}}/schema'
+            )
+            return JSONResponse(status_code=400, content=hint.model_dump())
+        raise HTTPException(status_code=400, detail=f"Query validation failed: {err_str}")
 
 @router.get("/result/{job_id}")
 async def get_async_result(job_id: str, current_user: str = Depends(get_current_user)):
@@ -208,3 +351,4 @@ async def get_async_result(job_id: str, current_user: str = Depends(get_current_
         "data": outcome.get("data"),
         "sql": outcome.get("sql"),
     }
+

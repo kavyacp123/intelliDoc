@@ -11,6 +11,7 @@ Handles:
 import uuid
 from io import BytesIO
 from typing import Tuple
+import zipfile
 
 import pandas as pd
 
@@ -113,14 +114,15 @@ def process_upload(
         columns=[ColumnMeta(name=n, dtype=t) for n, t in col_types],
     )
 
-    # Persist column metadata
+    # Persist column metadata with cardinality stats
     for col_name, col_type in col_types:
+        distinct_count = int(user_df[col_name].nunique())
         conn.execute(
             """
-            INSERT INTO dataset_metadata (dataset_id, column_name, column_type)
-            VALUES (?, ?, ?)
+            INSERT INTO dataset_metadata (dataset_id, column_name, column_type, distinct_count)
+            VALUES (?, ?, ?, ?)
             """,
-            [dataset_id, col_name, col_type],
+            [dataset_id, col_name, col_type, distinct_count],
         )
 
     # ── Step 8: Compute Pre-aggregations ──
@@ -141,7 +143,10 @@ def _parse_file(file_bytes: bytes, file_name: str) -> pd.DataFrame:
     if ext == "csv":
         return pd.read_csv(buffer)
     elif ext in ("xlsx", "xls"):
-        return pd.read_excel(buffer, engine="openpyxl")
+        try:
+            return pd.read_excel(buffer, engine="openpyxl")
+        except zipfile.BadZipFile:
+            raise ValueError("The uploaded Excel file appears to be corrupted or invalid.")
     elif ext == "json":
         return pd.read_json(buffer)
     else:

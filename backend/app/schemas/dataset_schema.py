@@ -2,7 +2,7 @@
 Pydantic schemas for dataset-related API requests and responses.
 """
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
@@ -24,11 +24,19 @@ class DatasetResponse(BaseModel):
 
 
 class DatasetSchemaResponse(BaseModel):
-    """Response for GET /datasets/{id}/schema."""
+    """Response for GET /datasets/{id}/schema — rich schema discovery."""
 
     dataset_id: str
     table_name: str
     columns: List[ColumnSchema]
+    # Inferred business metrics (e.g. "profit", "total_revenue")
+    inferred_metrics: List[str] = []
+    # Available dimensions for grouping (e.g. "region", "month")
+    available_dimensions: List[str] = []
+    # Sample distinct values per categorical column (max 5 each)
+    sample_values: Dict[str, List[Any]] = {}
+    # Tip message for the user
+    tip: str = ""
 
 
 class DatasetUploadResponse(BaseModel):

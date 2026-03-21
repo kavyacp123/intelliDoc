@@ -79,6 +79,49 @@ def normalize_question(question: str) -> str:
 
 
 # ─────────────────────────────────────────────
+# 1b. FUZZY COLUMN MATCHING
+#     When a user asks about a column that doesn't exist exactly,
+#     find the closest real column name from the dataset schema.
+# ─────────────────────────────────────────────
+def fuzzy_match_column(
+    user_term: str,
+    actual_columns: list,
+    cutoff: float = 0.75,
+) -> str | None:
+    """
+    Find the closest matching column name using difflib.
+
+    Args:
+        user_term:      The column name the user/LLM referenced.
+        actual_columns: List of real column names from the dataset schema.
+        cutoff:         Minimum similarity score (0-1). Default 0.75.
+
+    Returns:
+        The best matching column name, or None if no close match found.
+
+    Examples:
+        fuzzy_match_column("revenues", ["revenue", "region"]) → "revenue"
+        fuzzy_match_column("profitt", ["profit", "product"]) → "profit"
+        fuzzy_match_column("xyz", ["revenue", "region"]) → None
+    """
+    import difflib
+    matches = difflib.get_close_matches(
+        user_term.lower(),
+        [c.lower() for c in actual_columns],
+        n=1,
+        cutoff=cutoff,
+    )
+    if not matches:
+        return None
+    # Return the original casing from actual_columns
+    match_lower = matches[0]
+    for col in actual_columns:
+        if col.lower() == match_lower:
+            return col
+    return matches[0]
+
+
+# ─────────────────────────────────────────────
 # 2. DYNAMIC METRIC INFERENCE
 #    Inspects the actual schema columns at runtime and auto-generates
 #    derived metric definitions (e.g. profit = revenue - cogs).

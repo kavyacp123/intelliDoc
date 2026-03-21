@@ -1,0 +1,191 @@
+INFO:     Started server process [25637]
+INFO:     Waiting for application startup.
+2026-03-21 17:50:08,697 | INFO     | app.main | 🚀 Starting Secure AI Analytics Platform
+2026-03-21 17:50:08,735 | INFO     | app.main | ✅ Database initialized
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:52977 - "OPTIONS /register HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52977 - "POST /register HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52977 - "OPTIONS /datasets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52979 - "GET /datasets HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:52985 - "OPTIONS /upload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52985 - "POST /upload HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:53499 - "POST /login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53499 - "GET /datasets HTTP/1.1" 200 OK
+2026-03-21 17:54:25,761 | INFO     | app.services.file_service | Created logical view 'dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436' over 16 partition(s): ['dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436_2013_09', 'dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436_2013_10', 'dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436_2013_11', 'dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436_2013_12', 'dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436_2014_01', 'dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436_2014_02', 'dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436_2014_03', 'dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436_2014_04', 'dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436_2014_05', 'dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436_2014_06', 'dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436_2014_07', 'dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436_2014_08', 'dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436_2014_09', 'dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436_2014_10', 'dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436_2014_11', 'dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436_2014_12']
+2026-03-21 17:54:25,772 | INFO     | app.services.aggregation_service | Created pre-aggregation: dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436_agg_rev_by_region
+INFO:     127.0.0.1:53508 - "POST /upload HTTP/1.1" 201 Created
+INFO:     127.0.0.1:53508 - "GET /datasets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53510 - "OPTIONS /query HTTP/1.1" 200 OK
+2026-03-21 17:54:50,284 | INFO     | app.services.semantic_service | Inferred 4 semantics for table 'dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436': ['profit', 'total_revenue', 'total_cost', 'profit_margin_pct']
+2026-03-21 17:54:50,285 | INFO     | app.services.semantic_service | Semantic cache SET for dataset 0f36a4c6-8c00-4c7f-a9d9-9d27c4fb9436
+2026-03-21 17:54:50,596 | INFO     | httpx | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-21 17:54:50,615 | INFO     | app.routes.query_routes | Generated SQL:
+SELECT country, SUM(profit) as total FROM dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436 WHERE tenant_id = 'f19a3412-bef6-4306-bd84-ad8988f6888b' GROUP BY country ORDER BY total DESC LIMIT 1000
+2026-03-21 17:54:50,641 | INFO     | app.services.execution_service | Executing query: SELECT country, SUM(profit) as total FROM dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436 WHERE tenant_id = 'f19a3412-bef6-4306-bd84-ad8988f6888b' GROUP BY country ORDER BY total DESC LIMIT 1000
+2026-03-21 17:54:50,644 | INFO     | app.services.execution_service | Query returned 5 rows
+INFO:     127.0.0.1:53510 - "POST /query HTTP/1.1" 200 OK
+2026-03-21 17:56:29,710 | INFO     | app.services.semantic_service | Semantic cache HIT for dataset 0f36a4c6-8c00-4c7f-a9d9-9d27c4fb9436
+2026-03-21 17:56:30,009 | INFO     | httpx | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-21 17:56:30,011 | INFO     | app.routes.query_routes | Generated SQL:
+
+    SELECT tenant_id, year, product, total
+    FROM (
+        SELECT 
+            tenant_id,
+            year,
+            product,
+            SUM(sales) as total,
+            ROW_NUMBER() OVER (
+                PARTITION BY tenant_id, year
+                ORDER BY SUM(sales) DESC
+            ) as rank_n
+        FROM dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436
+        WHERE tenant_id = 'f19a3412-bef6-4306-bd84-ad8988f6888b'
+        GROUP BY tenant_id, year, product
+    )
+    WHERE rank_n <= 1
+    
+2026-03-21 17:56:30,023 | INFO     | app.services.execution_service | Executing query: 
+    SELECT tenant_id, year, product, total
+    FROM (
+        SELECT 
+            tenant_id,
+            year,
+            product,
+            SUM(sales) as total,
+            ROW_NUMBER() OVER (
+                PARTITION BY tenant_id, year
+                ORDER BY SUM(sales) DESC
+            ) as rank_n
+        FROM dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436
+        WHERE tenant_id = 'f19a3412-bef6-4306-bd84-ad8988f6888b'
+        GROUP BY tenant_id, year, product
+    )
+    WHERE rank_n <= 1
+    
+2026-03-21 17:56:30,033 | INFO     | app.services.execution_service | Query returned 2 rows
+INFO:     127.0.0.1:53529 - "POST /query HTTP/1.1" 200 OK
+2026-03-21 17:57:18,409 | INFO     | app.services.semantic_service | Semantic cache HIT for dataset 0f36a4c6-8c00-4c7f-a9d9-9d27c4fb9436
+2026-03-21 17:57:18,869 | INFO     | httpx | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:53532 - "POST /query HTTP/1.1" 422 Unprocessable Content
+2026-03-21 17:58:10,063 | INFO     | app.services.semantic_service | Semantic cache HIT for dataset 0f36a4c6-8c00-4c7f-a9d9-9d27c4fb9436
+2026-03-21 17:58:10,468 | INFO     | httpx | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-21 17:58:10,471 | INFO     | app.routes.query_routes | Generated SQL:
+
+    SELECT tenant_id, month_name, product, total
+    FROM (
+        SELECT 
+            tenant_id,
+            month_name,
+            product,
+            SUM(profit) as total,
+            ROW_NUMBER() OVER (
+                PARTITION BY tenant_id, month_name
+                ORDER BY SUM(profit) DESC
+            ) as rank_n
+        FROM dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436
+        WHERE tenant_id = 'f19a3412-bef6-4306-bd84-ad8988f6888b'
+        GROUP BY tenant_id, month_name, product
+    )
+    WHERE rank_n <= 1
+    
+2026-03-21 17:58:10,482 | INFO     | app.services.execution_service | Executing query: 
+    SELECT tenant_id, month_name, product, total
+    FROM (
+        SELECT 
+            tenant_id,
+            month_name,
+            product,
+            SUM(profit) as total,
+            ROW_NUMBER() OVER (
+                PARTITION BY tenant_id, month_name
+                ORDER BY SUM(profit) DESC
+            ) as rank_n
+        FROM dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436
+        WHERE tenant_id = 'f19a3412-bef6-4306-bd84-ad8988f6888b'
+        GROUP BY tenant_id, month_name, product
+    )
+    WHERE rank_n <= 1
+    
+2026-03-21 17:58:10,489 | INFO     | app.services.execution_service | Query returned 12 rows
+INFO:     127.0.0.1:53544 - "POST /query HTTP/1.1" 200 OK
+2026-03-21 17:58:37,891 | INFO     | app.services.semantic_service | Semantic cache HIT for dataset 0f36a4c6-8c00-4c7f-a9d9-9d27c4fb9436
+2026-03-21 17:58:38,184 | INFO     | httpx | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-21 17:58:38,187 | INFO     | app.routes.query_routes | Generated SQL:
+
+    SELECT tenant_id, month_name, product, total
+    FROM (
+        SELECT 
+            tenant_id,
+            month_name,
+            product,
+            SUM(profit) as total,
+            ROW_NUMBER() OVER (
+                PARTITION BY tenant_id, month_name
+                ORDER BY SUM(profit) DESC
+            ) as rank_n
+        FROM dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436
+        WHERE tenant_id = 'f19a3412-bef6-4306-bd84-ad8988f6888b'
+        GROUP BY tenant_id, month_name, product
+    )
+    WHERE rank_n <= 1
+    
+2026-03-21 17:58:38,198 | INFO     | app.routes.query_routes | Result cache hit.
+INFO:     127.0.0.1:53555 - "POST /query HTTP/1.1" 200 OK
+2026-03-21 17:59:13,728 | INFO     | app.services.semantic_service | Semantic cache HIT for dataset 0f36a4c6-8c00-4c7f-a9d9-9d27c4fb9436
+2026-03-21 17:59:14,172 | INFO     | httpx | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-21 17:59:14,175 | INFO     | app.routes.query_routes | Generated SQL:
+
+    SELECT tenant_id, month_name, product, total
+    FROM (
+        SELECT 
+            tenant_id,
+            month_name,
+            product,
+            SUM(sales) as total,
+            ROW_NUMBER() OVER (
+                PARTITION BY tenant_id, month_name
+                ORDER BY SUM(sales) DESC
+            ) as rank_n
+        FROM dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436
+        WHERE tenant_id = 'f19a3412-bef6-4306-bd84-ad8988f6888b'
+        GROUP BY tenant_id, month_name, product
+    )
+    WHERE rank_n <= 1
+    
+2026-03-21 17:59:14,186 | INFO     | app.services.execution_service | Executing query: 
+    SELECT tenant_id, month_name, product, total
+    FROM (
+        SELECT 
+            tenant_id,
+            month_name,
+            product,
+            SUM(sales) as total,
+            ROW_NUMBER() OVER (
+                PARTITION BY tenant_id, month_name
+                ORDER BY SUM(sales) DESC
+            ) as rank_n
+        FROM dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436
+        WHERE tenant_id = 'f19a3412-bef6-4306-bd84-ad8988f6888b'
+        GROUP BY tenant_id, month_name, product
+    )
+    WHERE rank_n <= 1
+    
+2026-03-21 17:59:14,193 | INFO     | app.services.execution_service | Query returned 12 rows
+INFO:     127.0.0.1:53559 - "POST /query HTTP/1.1" 200 OK
+2026-03-21 18:00:26,475 | INFO     | app.services.semantic_service | Semantic cache HIT for dataset 0f36a4c6-8c00-4c7f-a9d9-9d27c4fb9436
+2026-03-21 18:00:26,877 | INFO     | httpx | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:     127.0.0.1:53573 - "POST /query HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:53630 - "OPTIONS /query HTTP/1.1" 200 OK
+2026-03-21 18:07:57,421 | INFO     | app.services.semantic_service | Semantic cache HIT for dataset 0f36a4c6-8c00-4c7f-a9d9-9d27c4fb9436
+2026-03-21 18:07:57,737 | INFO     | httpx | HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-21 18:07:57,740 | INFO     | app.routes.query_routes | Generated SQL:
+SELECT _month, SUM(profit) as total FROM dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436 WHERE tenant_id = 'f19a3412-bef6-4306-bd84-ad8988f6888b' GROUP BY _month ORDER BY total DESC LIMIT 10
+2026-03-21 18:07:57,751 | INFO     | app.services.execution_service | Executing query: SELECT _month, SUM(profit) as total FROM dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436 WHERE tenant_id = 'f19a3412-bef6-4306-bd84-ad8988f6888b' GROUP BY _month ORDER BY total DESC LIMIT 10
+2026-03-21 18:07:57,755 | ERROR    | app.services.execution_service | Query execution failed: Binder Error: Referenced column "_month" not found in FROM clause!
+Candidate bindings: "month_name", "month_number", "country", "segment", "discounts"
+
+LINE 1: ... tenant_id = 'f19a3412-bef6-4306-bd84-ad8988f6888b' GROUP BY _month ORDER BY total DESC LIMIT 10
+                                                                        ^ | SQL: SELECT _month, SUM(profit) as total FROM dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436 WHERE tenant_id = 'f19a3412-bef6-4306-bd84-ad8988f6888b' GROUP BY _month ORDER BY total DESC LIMIT 10
+INFO:     127.0.0.1:53630 - "POST /query HTTP/1.1" 500 Internal Server Error

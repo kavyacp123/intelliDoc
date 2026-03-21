@@ -28,6 +28,10 @@ class TableMetadata:
 
     table_name: str
     columns: List[ColumnMeta] = field(default_factory=list)
+    row_count: int = 0
+    has_partitions: bool = False
+    pre_agg_tables: dict = field(default_factory=dict)
+    column_stats: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -35,4 +39,8 @@ class TableMetadata:
             "columns": [
                 {"name": c.name, "type": c.dtype} for c in self.columns
             ],
+            "row_count": self.row_count,
+            "has_partitions": self.has_partitions,
+            "pre_agg_tables": self.pre_agg_tables,
+            "column_stats": self.column_stats,
         }

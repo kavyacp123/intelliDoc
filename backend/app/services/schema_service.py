@@ -24,9 +24,9 @@ def get_dataset_schema(dataset_id: str) -> Optional[TableMetadata]:
     """
     conn = get_connection()
 
-    # Get table name
+    # Get table name and row count
     result = conn.execute(
-        "SELECT table_name FROM datasets WHERE dataset_id = ?",
+        "SELECT table_name, row_count FROM datasets WHERE dataset_id = ?",
         [dataset_id],
     ).fetchone()
 
@@ -34,11 +34,11 @@ def get_dataset_schema(dataset_id: str) -> Optional[TableMetadata]:
         return None
 
     table_name = result[0]
+    row_count = result[1] or 0
 
-    # Get column metadata
     columns = conn.execute(
         """
-        SELECT column_name, column_type
+        SELECT column_name, column_type, distinct_count
         FROM dataset_metadata
         WHERE dataset_id = ?
         ORDER BY column_name
@@ -46,9 +46,25 @@ def get_dataset_schema(dataset_id: str) -> Optional[TableMetadata]:
         [dataset_id],
     ).fetchall()
 
+    column_stats = {row[0]: {"distinct": row[2]} for row in columns}
+
+    # Detect partitions and pre-aggregations natively from DuckDB catalog
+    all_tables = [r[0] for r in conn.execute("SHOW TABLES").fetchall()]
+    partitions = [t for t in all_tables if t.startswith(f"{table_name}_") and "_agg_" not in t]
+    
+    pre_agg_tables = {}
+    for t in all_tables:
+        if t.startswith(f"{table_name}_agg_rev_by_"):
+            dim_key = t.split("_by_")[-1] # Extracts "region" or "month"
+            pre_agg_tables[dim_key] = t
+
     return TableMetadata(
         table_name=table_name,
         columns=[ColumnMeta(name=row[0], dtype=row[1]) for row in columns],
+        row_count=row_count,
+        has_partitions=len(partitions) > 0,
+        pre_agg_tables=pre_agg_tables,
+        column_stats=column_stats
     )
 
 
@@ -61,15 +77,18 @@ def get_all_schemas_for_tenant(tenant_id: str) -> List[TableMetadata]:
     conn = get_connection()
 
     datasets = conn.execute(
-        "SELECT dataset_id, table_name FROM datasets WHERE tenant_id = ?",
+        "SELECT dataset_id, table_name, row_count FROM datasets WHERE tenant_id = ?",
         [tenant_id],
     ).fetchall()
 
+    all_tables = [r[0] for r in conn.execute("SHOW TABLES").fetchall()]
+
     schemas = []
-    for dataset_id, table_name in datasets:
+    for dataset_id, table_name, row_count in datasets:
+        row_count = row_count or 0
         columns = conn.execute(
             """
-            SELECT column_name, column_type
+            SELECT column_name, column_type, distinct_count
             FROM dataset_metadata
             WHERE dataset_id = ?
             ORDER BY column_name
@@ -77,12 +96,26 @@ def get_all_schemas_for_tenant(tenant_id: str) -> List[TableMetadata]:
             [dataset_id],
         ).fetchall()
 
+        column_stats = {row[0]: {"distinct": row[2]} for row in columns}
+
+        partitions = [t for t in all_tables if t.startswith(f"{table_name}_") and "_agg_" not in t]
+        
+        pre_agg_tables = {}
+        for t in all_tables:
+            if t.startswith(f"{table_name}_agg_rev_by_"):
+                dim_key = t.split("_by_")[-1]
+                pre_agg_tables[dim_key] = t
+
         schemas.append(
             TableMetadata(
                 table_name=table_name,
                 columns=[
                     ColumnMeta(name=r[0], dtype=r[1]) for r in columns
                 ],
+                row_count=row_count,
+                has_partitions=len(partitions) > 0,
+                pre_agg_tables=pre_agg_tables,
+                column_stats=column_stats
             )
         )
 

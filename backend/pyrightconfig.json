@@ -1,0 +1,11 @@
+{
+    "venvPath": "/Users/kavyapatel/Desktop/final inteldoc /intelliDoc/backend",
+    "venv": "venv",
+    "extraPaths": [
+        "/Users/kavyapatel/Desktop/final inteldoc /intelliDoc/backend",
+        "/Users/kavyapatel/Desktop/final inteldoc /intelliDoc/backend/venv/lib/python3.14/site-packages"
+    ],
+    "pythonPath": "/Users/kavyapatel/Desktop/final inteldoc /intelliDoc/backend/venv/bin/python",
+    "reportMissingImports": false,
+    "reportMissingTypeStubs": false
+}
