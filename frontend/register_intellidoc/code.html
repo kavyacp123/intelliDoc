@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Register | intelliDoc Financial Intelligence</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-container": "#eceef0",
+              "primary-container": "#131b2e",
+              "on-error-container": "#93000a",
+              "on-secondary-fixed": "#001a42",
+              "background": "#f7f9fb",
+              "tertiary-fixed-dim": "#dec29a",
+              "surface-container-high": "#e6e8ea",
+              "on-background": "#191c1e",
+              "surface-dim": "#d8dadc",
+              "error": "#ba1a1a",
+              "on-tertiary-fixed-variant": "#574425",
+              "on-tertiary-fixed": "#271901",
+              "on-secondary-container": "#fefcff",
+              "tertiary": "#000000",
+              "on-primary": "#ffffff",
+              "on-primary-fixed-variant": "#3f465c",
+              "surface-container-lowest": "#ffffff",
+              "surface-bright": "#f7f9fb",
+              "secondary": "#0058be",
+              "primary-fixed": "#dae2fd",
+              "primary": "#000000",
+              "surface-tint": "#565e74",
+              "on-tertiary-container": "#98805d",
+              "on-primary-fixed": "#131b2e",
+              "on-surface": "#191c1e",
+              "inverse-on-surface": "#eff1f3",
+              "secondary-fixed": "#d8e2ff",
+              "on-primary-container": "#7c839b",
+              "surface-variant": "#e0e3e5",
+              "outline-variant": "#c6c6cd",
+              "secondary-fixed-dim": "#adc6ff",
+              "surface-container-low": "#f2f4f6",
+              "on-surface-variant": "#45464d",
+              "inverse-primary": "#bec6e0",
+              "inverse-surface": "#2d3133",
+              "error-container": "#ffdad6",
+              "tertiary-container": "#271901",
+              "primary-fixed-dim": "#bec6e0",
+              "on-error": "#ffffff",
+              "tertiary-fixed": "#fcdeb5",
+              "outline": "#76777d",
+              "on-secondary-fixed-variant": "#004395",
+              "surface-container-highest": "#e0e3e5",
+              "surface": "#f7f9fb",
+              "on-secondary": "#ffffff",
+              "on-tertiary": "#ffffff",
+              "secondary-container": "#2170e4"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(24px);
+        }
+        input:focus {
+            outline: none;
+            border-color: #0058be;
+            box-shadow: 0 0 0 1px rgba(0, 88, 190, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body min-h-screen flex flex-col">
+<header class="bg-slate-50 dark:bg-slate-950 flex justify-center items-center w-full px-6 py-8">
+<div class="font-headline tracking-tighter text-3xl font-extrabold text-slate-900 dark:text-slate-50">
+            intelliDoc
+        </div>
+</header>
+<main class="flex-grow flex items-center justify-center px-4 py-12">
+<div class="w-full max-w-xl">
+<!-- Registration Card -->
+<div class="bg-surface-container-lowest p-8 md:p-12 rounded-xl shadow-[0px_20px_40px_rgba(15,23,42,0.06)] relative overflow-hidden">
+<!-- Top Accent Bar -->
+<div class="absolute top-0 left-0 right-0 h-1 bg-primary-container"></div>
+<div class="mb-10">
+<h1 class="font-headline text-3xl font-bold tracking-tight text-on-surface mb-2">Create your account</h1>
+<p class="text-on-surface-variant text-sm">Join the network of elite financial professionals securing data intelligence.</p>
+</div>
+
+<!-- Error / Success Messages -->
+<div id="error-msg" class="hidden mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm font-medium"></div>
+<div id="success-msg" class="hidden mb-4 px-4 py-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm font-medium"></div>
+
+<form id="register-form" class="space-y-6">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Full Name -->
+<div class="space-y-2">
+<label class="text-[10px] uppercase font-bold tracking-widest text-on-surface-variant block px-1">Full Name</label>
+<input id="full-name" class="w-full bg-surface-container-low border-none p-4 rounded-lg text-on-surface placeholder-outline focus:ring-1 focus:ring-secondary transition-all" placeholder="Johnathan Doe" type="text"/>
+</div>
+<!-- Company Name -->
+<div class="space-y-2">
+<label class="text-[10px] uppercase font-bold tracking-widest text-on-surface-variant block px-1">Company Name</label>
+<input id="company" class="w-full bg-surface-container-low border-none p-4 rounded-lg text-on-surface placeholder-outline focus:ring-1 focus:ring-secondary transition-all" placeholder="Global Ledger Partners" type="text"/>
+</div>
+</div>
+<!-- Work Email -->
+<div class="space-y-2">
+<label class="text-[10px] uppercase font-bold tracking-widest text-on-surface-variant block px-1">Work Email</label>
+<input id="email" class="w-full bg-surface-container-low border-none p-4 rounded-lg text-on-surface placeholder-outline focus:ring-1 focus:ring-secondary transition-all" placeholder="name@company.com" type="email" required/>
+</div>
+<!-- Password -->
+<div class="space-y-2">
+<label class="text-[10px] uppercase font-bold tracking-widest text-on-surface-variant block px-1">Password</label>
+<input id="password" class="w-full bg-surface-container-low border-none p-4 rounded-lg text-on-surface placeholder-outline focus:ring-1 focus:ring-secondary transition-all" placeholder="••••••••••••" type="password" required/>
+<div class="flex items-center gap-2 mt-2 px-1">
+<span class="material-symbols-outlined text-[14px] text-secondary">info</span>
+<span class="text-[11px] text-on-surface-variant font-medium">Password must be at least 8 characters</span>
+</div>
+</div>
+<!-- TOS Checkbox -->
+<div class="flex items-start gap-3 py-2 px-1">
+<div class="pt-0.5">
+<input class="w-4 h-4 rounded border-outline-variant text-secondary focus:ring-secondary" id="tos" type="checkbox" required/>
+</div>
+<label class="text-xs text-on-surface-variant leading-relaxed" for="tos">
+  I agree to the <a class="text-secondary hover:underline" href="#">Terms of Service</a> and <a class="text-secondary hover:underline" href="#">Privacy Policy</a>
+</label>
+</div>
+<!-- CTA Buttons -->
+<div class="space-y-4 pt-4">
+<button id="submit-btn" class="w-full bg-gradient-to-br from-primary to-primary-container text-on-primary py-4 rounded-lg font-semibold tracking-wide hover:shadow-lg active:scale-[0.98] transition-all flex justify-center items-center gap-2 group" type="submit">
+  <span id="btn-text">Create Account</span>
+  <span class="material-symbols-outlined text-sm transition-transform group-hover:translate-x-1">arrow_forward</span>
+</button>
+<div class="text-center pt-2">
+<p class="text-sm text-on-surface-variant">
+  Already have an account? 
+  <a class="text-primary font-bold hover:text-secondary transition-colors px-1" href="../login_intellidoc/code.html">Log in</a>
+</p>
+</div>
+</div>
+</form>
+</div>
+<!-- Trust Badges -->
+<div class="mt-12 flex flex-wrap justify-center items-center gap-8 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xl">verified_user</span>
+<span class="text-[10px] font-bold tracking-tighter uppercase">SOC2 Certified</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xl">encrypted</span>
+<span class="text-[10px] font-bold tracking-tighter uppercase">AES-256 Encrypted</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xl">account_balance</span>
+<span class="text-[10px] font-bold tracking-tighter uppercase">SEC Compliant</span>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="bg-slate-50 dark:bg-slate-950 border-t border-slate-200/10">
+<div class="w-full py-8 px-6 flex flex-col md:flex-row justify-between items-center gap-4 max-w-7xl mx-auto">
+<div class="font-manrope font-semibold text-slate-400">intelliDoc</div>
+<div class="flex flex-wrap justify-center gap-6">
+<a class="font-inter text-xs tabular-nums text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors" href="#">Privacy Policy</a>
+<a class="font-inter text-xs tabular-nums text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors" href="#">Terms of Service</a>
+<a class="font-inter text-xs tabular-nums text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors" href="#">Security Architecture</a>
+</div>
+<div class="font-inter text-xs tabular-nums text-slate-400 dark:text-slate-600">
+  © 2024 intelliDoc Financial Intelligence.
+</div>
+</div>
+</footer>
+
+<script>
+  const API_BASE = 'http://localhost:8000';
+
+  document.getElementById('register-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('error-msg');
+    const succEl = document.getElementById('success-msg');
+    const btnText = document.getElementById('btn-text');
+
+    errEl.classList.add('hidden');
+    succEl.classList.add('hidden');
+    btnText.textContent = 'Creating Account...';
+
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
+    try {
+      const res = await fetch(`${API_BASE}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        errEl.textContent = data.detail || 'Registration failed. Please try again.';
+        errEl.classList.remove('hidden');
+        btnText.textContent = 'Create Account';
+        return;
+      }
+
+      succEl.textContent = 'Account created! Redirecting to login...';
+      succEl.classList.remove('hidden');
+      setTimeout(() => {
+        window.location.href = '../login_intellidoc/code.html';
+      }, 1500);
+    } catch (err) {
+      errEl.textContent = 'Could not connect to server. Is the backend running?';
+      errEl.classList.remove('hidden');
+      btnText.textContent = 'Create Account';
+    }
+  });
+</script>
+</body></html>

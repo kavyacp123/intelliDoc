@@ -5,7 +5,14 @@ Ensures query safety before execution by enforcing strict rules:
   - Only SELECT statements allowed
   - DML/DDL statements (DROP, DELETE, UPDATE, INSERT, ALTER) are blocked
   - Only whitelisted tables and columns are permitted
-  - Uses sqlglot for AST-level SQL parsing when available
+  - Aliases and aggregate expressions (SUM, AVG, COUNT, etc.) are always allowed
+  - Uses sqlglot for AST-level SQL parsing
+
+Column validation logic:
+  - A Column node is ONLY checked if it references a real source column.
+  - Columns inside aggregate functions (SUM, AVG, etc.) reference real columns → checked.
+  - Aliases (AS total_revenue) are expression-output names → NOT checked against schema.
+  - Subquery-derived columns/expressions → NOT checked.
 
 This is a critical security layer — no query reaches the execution
 engine without passing through validation.
@@ -20,8 +27,16 @@ from sqlglot import exp
 
 class QueryValidationError(Exception):
     """Raised when a SQL query fails validation."""
-
     pass
+
+
+# Safe SQL aggregate / scalar functions that the LLM is allowed to use
+_SAFE_FUNCTIONS = {
+    "sum", "avg", "count", "min", "max", "round", "abs",
+    "coalesce", "nullif", "ifnull", "date_trunc", "strftime",
+    "extract", "year", "month", "day", "lower", "upper",
+    "trim", "length", "cast", "try_cast",
+}
 
 
 def validate_query(
@@ -38,7 +53,8 @@ def validate_query(
       3. AST-level validation via sqlglot:
          - Only SELECT expression types
          - All referenced tables are in the allowlist
-         - All referenced columns are in the allowlist (if provided)
+         - Source columns (inside expressions) are in the allowlist
+         - Aliases and computed expressions are always permitted
 
     Args:
         sql: The SQL query to validate.
@@ -78,7 +94,7 @@ def validate_query(
         if allowed_tables:
             _validate_tables(statement, allowed_tables)
 
-        # Validate columns
+        # Validate columns (alias-aware)
         if allowed_columns:
             _validate_columns(statement, allowed_columns)
 
@@ -135,14 +151,54 @@ def _validate_tables(
 def _validate_columns(
     statement: exp.Select, allowed_columns: Set[str]
 ) -> None:
-    """Ensure all referenced columns are in the allowlist."""
+    """
+    Ensure all SOURCE columns referenced in the query are in the allowlist.
+
+    Key rules:
+      - Aliases (AS total_revenue) are output names — NOT validated.
+      - Columns inside aggregate functions (SUM(revenue)) reference real
+        schema columns → validated.
+      - Columns that are direct children of an Alias node on the SELECT
+        clause are output labels → skipped.
+      - Wildcard (*) is always allowed.
+
+    This allows LLM-generated queries like:
+        SELECT region, SUM(revenue) AS total_revenue FROM ...
+    to pass even though `total_revenue` is not a real column.
+    """
+    # Collect all alias OUTPUT names defined in this query — these are
+    # computed result labels, not source columns, so they are always safe.
+    alias_names: Set[str] = set()
+    for alias in statement.find_all(exp.Alias):
+        alias_names.add(alias.alias.lower())
+
     for column in statement.find_all(exp.Column):
         col_name = column.name.lower()
-        # Skip star expressions
+
+        # Always allow wildcards
         if col_name == "*":
             continue
+
+        # If this name is one of the computed alias output names, skip
+        if col_name in alias_names:
+            continue
+
+        # Check if this column is itself the direct input of an Alias
+        # (e.g. `revenue AS rev` — `revenue` is the source, should still
+        # be checked; `rev` is already captured in alias_names above)
+        parent = column.parent
+        if isinstance(parent, exp.Alias):
+            # The column is the alias INPUT (real source column) → check it
+            if col_name not in allowed_columns:
+                raise QueryValidationError(
+                    f"Column not allowed: {col_name}. "
+                    f"Allowed: {sorted(allowed_columns)}"
+                )
+            continue
+
+        # Standard source column reference — check against the allowlist
         if col_name not in allowed_columns:
             raise QueryValidationError(
                 f"Column not allowed: {col_name}. "
-                f"Allowed: {allowed_columns}"
+                f"Allowed: {sorted(allowed_columns)}"
             )

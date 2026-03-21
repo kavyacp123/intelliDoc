@@ -92,6 +92,9 @@ def process_upload(
         part_name = f"{table_name}_default"
         conn.execute(f'CREATE TABLE "{part_name}" AS SELECT * FROM df')
 
+    # ── Step 5.5: Create logical VIEW over all partitions ──
+    _create_logical_view(table_name, conn)
+
     # ── Step 6: Register in datasets table ──
     conn.execute(
         """
@@ -146,3 +149,56 @@ def _parse_file(file_bytes: bytes, file_name: str) -> pd.DataFrame:
             f"Unsupported file format: .{ext}. "
             "Accepted formats: .csv, .xlsx, .xls, .json"
         )
+
+
+def _create_logical_view(table_name: str, conn) -> None:
+    """
+    Create (or replace) a logical DuckDB VIEW that unifies all physical
+    partition tables under one virtual table name.
+
+    After upload, monthly partitions exist as:
+        dataset_xxx_2024_01, dataset_xxx_2024_02, ...
+
+    This function creates:
+        CREATE OR REPLACE VIEW dataset_xxx AS
+            SELECT * FROM dataset_xxx_2024_01
+            UNION ALL
+            SELECT * FROM dataset_xxx_2024_02
+            ...
+
+    The LLM always generates SQL with the base `table_name`. DuckDB
+    transparently routes through this view to the physical partitions.
+
+    Args:
+        table_name: The base logical table name (e.g. "dataset_xxx").
+        conn: Active DuckDB connection.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Find all partition tables that belong to this dataset
+    all_tables = [r[0] for r in conn.execute("SHOW TABLES").fetchall()]
+    partitions = [
+        t for t in all_tables
+        if t.startswith(f"{table_name}_") and "_agg_" not in t
+    ]
+
+    if not partitions:
+        logger.warning("No partitions found for %s — view not created", table_name)
+        return
+
+    # Build UNION ALL over all partitions
+    union_parts = [f'SELECT * FROM "{p}"' for p in sorted(partitions)]
+    union_sql = " UNION ALL ".join(union_parts)
+
+    view_sql = f'CREATE OR REPLACE VIEW "{table_name}" AS {union_sql}'
+
+    try:
+        conn.execute(view_sql)
+        logger.info(
+            "Created logical view '%s' over %d partition(s): %s",
+            table_name, len(partitions), partitions
+        )
+    except Exception as e:
+        logger.error("Failed to create view for %s: %s", table_name, e)
+        raise

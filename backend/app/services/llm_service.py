@@ -1,261 +1,153 @@
 """
-LLM Adapter (Service 4 of 8).
+LLM Adapter — Hybrid Semantic SQL Generation via Groq.
 
-Converts a natural language question into a StructuredIntent.
+Converts a natural language question into a validated DuckDB SQL query.
 
 SECURITY CONTRACT:
   - ONLY schema metadata (column names + types) is sent to the LLM.
+  - Dynamic semantics (inferred formulas) are also injected — still no raw data.
   - NEVER sends raw data values.
-  - NEVER asks the LLM to generate SQL.
-  - Output is a StructuredIntent dict, not SQL.
+  - Output SQL is validated before execution (SELECT-only, AST-checked).
 
-Currently ships with a stub/rule-based implementation.
-Swap in a real LLM provider (OpenAI, Gemini, etc.) by implementing
-the same interface.
+Flow:
+  1. Receive normalized question + schema metadata + dynamic semantics
+  2. Build a rich prompt with schema + semantic context
+  3. Groq LLM returns raw SQL
+  4. Strip markdown fences if present
+  5. Return SQL for validation
 """
 
-import json
 import re
-from typing import Any, Dict, List, Optional
-from google import genai
-from google.genai import types
+from typing import Dict, List, Optional
+
+from groq import Groq
 from app.core.config import settings
-
 from app.models.metadata import TableMetadata
-from app.schemas.query_schema import StructuredIntent
-from app.services.semantic_service import get_semantic_summary
-
-def filter_relevant_columns(schemas: List[TableMetadata], question: str) -> List[TableMetadata]:
-    """Filter schema to send only relevant columns, reducing LLM payload size and latency."""
-    q_lower = question.lower()
-    # Keep baseline date/tenant columns + words found in the question
-    keep_keywords = {"date", "time", "year", "month", "tenant_id"}
-    for word in re.findall(r'\w+', q_lower):
-        if len(word) > 2:
-            keep_keywords.add(word)
-            
-    pruned_schemas = []
-    for s in schemas:
-        kept = []
-        for c in s.columns:
-            c_name = c.name.lower()
-            if any(k in c_name or c_name in k for k in keep_keywords):
-                kept.append(c)
-        if not kept:
-            kept = s.columns[:5] # Fallback if filtering is too aggressive
-        pruned_schemas.append(TableMetadata(table_name=s.table_name, columns=kept))
-    return pruned_schemas
 
 
-def generate_intent(
+def generate_sql(
     question: str,
     schemas: List[TableMetadata],
     table_name: Optional[str] = None,
-) -> StructuredIntent:
+    semantics: Optional[Dict[str, str]] = None,
+) -> str:
     """
-    Convert a natural language question into a StructuredIntent.
+    Convert a natural language question directly into a DuckDB SQL query using Groq.
 
-    This is the ONLY function that interacts with the LLM (or stub).
-    It receives ONLY:
-      - The user question (string)
-      - Schema metadata (column names + types)
-      - Semantic layer summary (metric/dimension names)
-
-    It NEVER receives raw data values.
+    Sends ONLY schema metadata (column names + types) and inferred semantic
+    formulas to the LLM. Never sends raw data.
 
     Args:
-        question: Natural language question from the user.
+        question: Natural language question (already synonym-normalized).
         schemas: List of table schemas (column names + types only).
         table_name: Optional target table name.
+        semantics: Optional dict of inferred metrics { name: sql_expression }.
 
     Returns:
-        StructuredIntent with metric, dimension, filters, time_range.
+        A raw SQL string ready for validation and execution.
     """
-    # Get available metrics and dimensions from semantic layer
-    semantic = get_semantic_summary()
-    available_metrics = semantic["available_metrics"]
-    available_dimensions = semantic["available_dimensions"]
+    if not settings.GROQ_API_KEY:
+        raise ValueError("GROQ_API_KEY is not configured in .env")
 
-    # ── Intent extraction ──
-    print(f"PROVIDER IS {settings.LLM_PROVIDER}")
-    if True: # Forced activation of Gemini LLM
-        if not settings.GEMINI_API_KEY:
-            raise ValueError("GEMINI_API_KEY is not configured in .env")
-        
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        
-        # Prune columns to optimize prompt size and response time
-        pruned_schemas = filter_relevant_columns(schemas, question)
-        
-        schema_context = []
-        for s in pruned_schemas:
-            cols = [f"{c.name} ({c.dtype})" for c in s.columns]
-            schema_context.append(f"Table: {s.table_name}, Columns: {', '.join(cols)}")
-            
-        prompt = f"""
-        You are an AI data assistant. Convert the user's natural language question into a structured intent JSON.
-        Do not write SQL. Only use the provided metrics and dimensions.
-        
-        Available Metrics: {available_metrics}
-        Available Dimensions: {available_dimensions}
-        Schema Context (Use these columns for filters):
-        {chr(10).join(schema_context)}
-        
-        User Question: {question}
-        
-        Respond ONLY with a valid JSON object matching exactly this schema:
-        {{
-          "metric": "string (from Available Metrics)",
-          "dimension": "string (from Available Dimensions) or null",
-          "filters": [
-            {{"column": "string", "op": "string (e.g. =, >, <)", "value": "string or number"}}
-          ],
-          "time_range": "string or null"
-        }}
-        """
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-            ),
-        )
-        try:
-            data = json.loads(response.text)
-            intent = StructuredIntent(
-                metric=data.get("metric", available_metrics[0]),
-                dimension=data.get("dimension"),
-                filters=data.get("filters", []),
-                time_range=data.get("time_range")
-            )
-        except Exception as e:
-            raise ValueError(f"Failed to parse Gemini response: {e}")
+    # ── Build schema context string (metadata only — never raw data) ──
+    schema_lines = []
+    for s in schemas:
+        cols = ", ".join(f"{c.name} ({c.dtype})" for c in s.columns)
+        schema_lines.append(f"Table: {s.table_name}\nColumns: {cols}")
+    schema = "\n\n".join(schema_lines)
 
-    else:
-        # Fallback to rule-based stub
-        intent = _rule_based_intent(
-            question=question,
-            available_metrics=available_metrics,
-            available_dimensions=available_dimensions,
-            schemas=schemas,
-        )
+    # ── Build semantic injection block (confidence gated) ──
+    semantic_block = ""
+    if semantics:
+        lines = ["Inferred business metrics (use these derived formulas when they match the question):"]
+        for name, expr in semantics.items():
+            lines.append(f"  - {name} = {expr}")
+        semantic_block = "\n".join(lines)
 
-    # Attach target table if specified
-    if table_name:
-        intent.table_name = table_name
-    elif schemas:
-        intent.table_name = schemas[0].table_name
+    # ── Assemble prompt ──
+    prompt = f"""You are an expert data analyst and SQL generator.
 
-    return intent
+Your task is to convert a natural language question into a valid DuckDB SQL query using ONLY the provided dataset schema.
 
+=====================
+DATASET SCHEMA:
+{schema}
+=====================
+{f"""
+=====================
+INFERRED SEMANTIC METRICS:
+{semantic_block}
 
-def _rule_based_intent(
-    question: str,
-    available_metrics: List[str],
-    available_dimensions: List[str],
-    schemas: List[TableMetadata],
-) -> StructuredIntent:
-    """
-    Rule-based fallback for intent extraction.
+Use these derived formulas when the user asks about profit, margins, etc.
+If no relevant metric matches, fall back to the raw schema columns.
+=====================
+""" if semantic_block else ""}
+STRICT RULES:
+1. Use ONLY the columns listed in the schema above.
+2. DO NOT invent or assume any column names.
+3. DO NOT use any external knowledge.
+4. Generate ONLY a SELECT query (no INSERT, UPDATE, DELETE, DROP).
+5. Ensure the query is valid DuckDB SQL.
+6. Use LIMIT 1000 unless specified otherwise.
 
-    Matches keywords in the question against available metrics and
-    dimensions. Good enough for demo/testing; replace with LLM in prod.
-    """
-    q = question.lower()
+QUERY LOGIC:
+- Use SUM() for totals
+- Use AVG() for averages
+- Use COUNT(*) for counts
+- Use GROUP BY when aggregating with categories
+- Use ORDER BY when user asks for top/bottom results
 
-    # ── Match metric ──
-    matched_metric = "revenue"  # sensible default
-    for metric in available_metrics:
-        if metric.lower() in q:
-            matched_metric = metric
-            break
+DERIVED METRICS (ONLY IF POSSIBLE FROM AVAILABLE COLUMNS):
+- If both "revenue" and "cogs" exist, you may compute profit = revenue - cogs
+- If only a direct column exists, use it instead of deriving
 
-    # ── Match dimension ──
-    matched_dimension = None
-    # Check for "by <dimension>" pattern first
-    by_match = re.search(r"\bby\s+(\w+)", q)
-    if by_match:
-        candidate = by_match.group(1).lower()
-        for dim in available_dimensions:
-            if dim.lower() == candidate or dim.lower().startswith(candidate):
-                matched_dimension = dim
-                break
+HANDLING AMBIGUITY:
+- If the question is ambiguous, choose the most reasonable interpretation based on column names
+- If a requested concept does not exist, map it to the closest available column
 
-    # Fallback: check if any dimension keyword appears anywhere
-    if not matched_dimension:
-        for dim in available_dimensions:
-            if dim.lower() in q:
-                matched_dimension = dim
-                break
+OUTPUT FORMAT:
+- Return ONLY the SQL query
+- No explanation, no comments, no markdown
 
-    # ── Match time range ──
-    time_range = None
-    time_patterns = [
-        (r"last\s+(\d+)\s+months?", lambda m: f"last {m.group(1)} months"),
-        (r"last\s+(\d+)\s+days?", lambda m: f"last {m.group(1)} days"),
-        (r"last\s+(\d+)\s+years?", lambda m: f"last {m.group(1)} years"),
-        (r"this\s+month", lambda m: "this month"),
-        (r"this\s+year", lambda m: "this year"),
-        (r"last\s+quarter", lambda m: "last quarter"),
-    ]
-    for pattern, extractor in time_patterns:
-        match = re.search(pattern, q)
-        if match:
-            time_range = extractor(match)
-            break
+=====================
+USER QUESTION:
+{question}
+=====================
+"""
 
-    # ── Match filters ──
-    filters = _extract_filters(q, schemas)
-
-    # ── Chart hint ──
-    chart_hint = _infer_chart_hint(matched_metric, matched_dimension, q)
-
-    return StructuredIntent(
-        metric=matched_metric,
-        dimension=matched_dimension,
-        filters=filters,
-        time_range=time_range,
+    client = Groq(api_key=settings.GROQ_API_KEY)
+    response = client.chat.completions.create(
+        model=settings.GROQ_MODEL,
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a precise SQL generator. Output only valid DuckDB SQL. No markdown, no explanation.",
+            },
+            {
+                "role": "user",
+                "content": prompt,
+            },
+        ],
+        temperature=0,  # Deterministic output for SQL
     )
 
+    sql = response.choices[0].message.content.strip()
 
-def _extract_filters(
-    question: str, schemas: List[TableMetadata]
-) -> List[Dict[str, Any]]:
-    """
-    Extract simple equality filters from the question.
+    # Strip markdown code fences if model adds them anyway
+    sql = re.sub(r"^```[a-zA-Z]*\n?", "", sql)
+    sql = re.sub(r"\n?```$", "", sql)
+    sql = sql.strip()
 
-    Looks for patterns like "where region is East" or "for category Electronics".
-    """
-    filters = []
-
-    # Collect all column names from all schemas
-    all_columns = set()
-    for schema in schemas:
-        for col in schema.columns:
-            all_columns.add(col.name)
-
-    # Pattern: "where/for/in <column> is/= <value>"
-    pattern = r"(?:where|for|in)\s+(\w+)\s+(?:is|=|equals?)\s+['\"]?(\w+)['\"]?"
-    for match in re.finditer(pattern, question):
-        col_candidate = match.group(1).lower()
-        value = match.group(2)
-        if col_candidate in all_columns:
-            filters.append(
-                {"column": col_candidate, "op": "=", "value": value}
-            )
-
-    return filters
+    return sql
 
 
-def _infer_chart_hint(
-    metric: str, dimension: Optional[str], question: str
-) -> str:
-    """Infer a chart type hint based on the intent."""
+def _infer_chart_hint(question: str) -> str:
+    """Infer a chart type from the question wording."""
     q = question.lower()
-    if any(word in q for word in ["trend", "over time", "timeline"]):
+    if any(w in q for w in ["trend", "over time", "timeline", "by month", "by year", "by quarter"]):
         return "line"
-    if any(word in q for word in ["distribution", "breakdown", "pie"]):
+    if any(w in q for w in ["distribution", "breakdown", "share", "pie", "percent"]):
         return "pie"
-    if dimension:
+    if any(w in q for w in ["by ", "per ", "group"]):
         return "bar"
     return "number"

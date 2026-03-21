@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>intelliDoc | Financial Intelligence</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "on-secondary-container": "#fefcff",
+                        "on-tertiary-fixed-variant": "#574425",
+                        "primary-container": "#131b2e",
+                        "outline-variant": "#c6c6cd",
+                        "secondary": "#0058be",
+                        "primary-fixed-dim": "#bec6e0",
+                        "on-tertiary": "#ffffff",
+                        "inverse-surface": "#2d3133",
+                        "on-error": "#ffffff",
+                        "surface-dim": "#d8dadc",
+                        "surface-container-low": "#f2f4f6",
+                        "tertiary-container": "#271901",
+                        "on-surface-variant": "#45464d",
+                        "on-primary-container": "#7c839b",
+                        "on-tertiary-fixed": "#271901",
+                        "surface-tint": "#565e74",
+                        "secondary-fixed": "#d8e2ff",
+                        "error": "#ba1a1a",
+                        "on-secondary": "#ffffff",
+                        "on-secondary-fixed-variant": "#004395",
+                        "tertiary": "#000000",
+                        "surface-bright": "#f7f9fb",
+                        "on-background": "#191c1e",
+                        "on-primary": "#ffffff",
+                        "primary-fixed": "#dae2fd",
+                        "on-secondary-fixed": "#001a42",
+                        "secondary-container": "#2170e4",
+                        "inverse-on-surface": "#eff1f3",
+                        "outline": "#76777d",
+                        "on-error-container": "#93000a",
+                        "secondary-fixed-dim": "#adc6ff",
+                        "background": "#f7f9fb",
+                        "surface-container-high": "#e6e8ea",
+                        "surface-container-lowest": "#ffffff",
+                        "error-container": "#ffdad6",
+                        "on-primary-fixed-variant": "#3f465c",
+                        "tertiary-fixed-dim": "#dec29a",
+                        "surface": "#f7f9fb",
+                        "on-primary-fixed": "#131b2e",
+                        "on-tertiary-container": "#98805d",
+                        "surface-container-highest": "#e0e3e5",
+                        "on-surface": "#191c1e",
+                        "surface-variant": "#e0e3e5",
+                        "tertiary-fixed": "#fcdeb5",
+                        "primary": "#000000",
+                        "surface-container": "#eceef0",
+                        "inverse-primary": "#bec6e0"
+                    },
+                    fontFamily: {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; background-color: #f7f9fb; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .tabular-nums { font-variant-numeric: tabular-nums; }
+        .editorial-header { font-family: 'Manrope', sans-serif; }
+    </style>
+</head>
+<body class="flex flex-col h-screen text-on-surface">
+<!-- Top Global Nav Bar -->
+<header class="h-14 w-full flex items-center justify-between px-6 bg-white border-b border-outline-variant/15 z-50">
+<div class="flex items-center">
+<h1 class="font-['Manrope'] font-extrabold text-xl tracking-tighter text-slate-900">intelliDoc</h1>
+</div>
+<div class="flex items-center gap-4">
+<button id="logout-btn" class="text-xs font-semibold text-secondary hover:underline transition-all">Logout</button>
+<button class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center overflow-hidden border border-outline-variant/30 hover:ring-2 ring-secondary/20 transition-all">
+<img alt="User avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAguFL3MT8VsqWPEskjtf8vORc90KGC3IQRA5IFQjUuwOCd89e4lZnzFnC2P4MUPpGmMIxmIQZBrhO0IxUKnB3mXvWwZPHsniH9SmgQjrkZuc7TNBG5J5_u1bbFCI4z-ISHhKHz1RYDRN_VzS-SgujwF-ngSexIyfibDkRKm2uPZ9R7sty1hLKKD0TfZKcyD-a5Av1XVOvl-89HpdySxjQRlQHBnDYmKyTF742caejsfbGNq1UOTnbnkvBktNuWKoauNsLV4Kx3d6SK"/>
+</button>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<!-- SideNavBar -->
+<aside class="hidden md:flex flex-col p-6 gap-y-4 h-full w-72 border-r border-slate-200/15 bg-slate-50 dark:bg-slate-900 transition-all duration-200 ease-in-out">
+<div class="mb-8 flex flex-col">
+<h2 class="text-sm font-semibold tracking-tight uppercase text-on-surface-variant mb-4">Datasets</h2>
+<input type="file" id="file-upload" class="hidden" accept=".csv,.xlsx,.xls,.json" />
+<button id="upload-btn" class="flex items-center justify-center gap-2 w-full py-3 bg-primary text-on-primary rounded-lg font-semibold shadow-sm hover:opacity-90 active:scale-95 transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+                    <span id="upload-text">Upload Dataset</span>
+                </button>
+</div>
+<nav class="flex-1 space-y-6 overflow-y-auto">
+<!-- Navigation Tabs -->
+<div class="space-y-1">
+<a class="flex items-center gap-3 px-3 py-2.5 bg-white dark:bg-slate-950 text-slate-900 dark:text-white font-semibold rounded-lg shadow-sm transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="database">database</span>
+<span class="font-['Inter'] text-sm tracking-tight">Datasets</span>
+</a>
+</div>
+<!-- Current Context: Files -->
+<div>
+<h3 class="text-[10px] font-bold tracking-[0.1em] uppercase text-on-surface-variant mb-3 px-3">Active Sources</h3>
+<div id="dataset-list" class="space-y-2">
+  <!-- Dynamic dataset list will render here -->
+  <div class="px-3 text-xs text-on-surface-variant italic">No datasets uploaded yet...</div>
+</div>
+</div>
+</nav>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col relative bg-surface overflow-hidden">
+<!-- Header inside Main (Breadcrumbs/Status) -->
+<header class="flex justify-between items-center px-8 h-16 w-full bg-transparent font-['Manrope'] font-bold text-lg sticky top-0 z-30">
+<div class="flex items-center gap-2">
+<span class="text-xl font-extrabold tracking-tighter text-slate-900 dark:text-white font-['Manrope']">AI Analytics</span>
+</div>
+</header>
+<!-- Chat History Scroll Container -->
+<div id="chat-history" class="flex-1 overflow-y-auto px-6 md:px-24 py-6 space-y-12">
+    <!-- Welcome empty state -->
+    <div class="text-center py-20 opacity-50">
+        <span class="material-symbols-outlined text-6xl text-on-surface-variant mb-4" data-icon="auto_awesome" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+        <h2 class="text-xl font-bold font-headline mb-2">Welcome to intelliDoc</h2>
+        <p class="text-sm font-body">Select a dataset from the sidebar and start asking questions.</p>
+    </div>
+</div>
+<!-- Fixed Input Area (Glassmorphism) -->
+<div class="sticky bottom-0 left-0 right-0 p-6 md:px-24 bg-gradient-to-t from-surface to-transparent">
+<div class="max-w-4xl mx-auto">
+<div class="relative flex items-center bg-surface-container-lowest/80 backdrop-blur-xl rounded-2xl shadow-[0px_20px_40px_rgba(15,23,42,0.06)] border border-outline-variant/15 p-2 pr-4 transition-all focus-within:ring-2 ring-secondary/20">
+<textarea id="query-input" class="flex-1 bg-transparent border-none focus:ring-0 text-on-surface py-3 px-4 resize-none max-h-32 text-sm placeholder:text-on-surface-variant/40" placeholder="Ask about your financial data..." rows="1"></textarea>
+<button id="send-btn" class="ml-2 p-3 bg-primary text-on-primary rounded-xl flex items-center justify-center hover:opacity-90 active:scale-95 transition-all">
+<span class="material-symbols-outlined" data-icon="send">send</span>
+</button>
+</div>
+<p class="text-[10px] text-center text-on-surface-variant/40 mt-3 tracking-wide">AI-powered analysis can make mistakes. Please verify important financial figures.</p>
+</div>
+</div>
+</main>
+</div>
+
+<!-- Integration Scripts -->
+<script>
+    const API_BASE = 'http://localhost:8000';
+    const token = localStorage.getItem('access_token');
+    
+    // Auth Guard
+    if (!token) {
+        window.location.href = '../login_intellidoc/code.html';
+    }
+
+    // Auth Header Helper
+    const authHeaders = {
+        'Authorization': `Bearer ${token}`
+    };
+
+    let activeDatasetId = null;
+
+    // In-memory chat store: maps dataset_id -> HTML string of the chat history
+    const chatHistories = {};
+    const WELCOME_HTML = `
+    <div class="text-center py-20 opacity-50">
+        <span class="material-symbols-outlined text-6xl text-on-surface-variant mb-4" data-icon="auto_awesome" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+        <h2 class="text-xl font-bold font-headline mb-2">Welcome to intelliDoc</h2>
+        <p class="text-sm font-body">Select a dataset from the sidebar and start asking questions.</p>
+    </div>`;
+
+    // --- Logout ---
+    document.getElementById('logout-btn').addEventListener('click', () => {
+        localStorage.removeItem('access_token');
+        window.location.href = '../login_intellidoc/code.html';
+    });
+
+    // --- Dataset Upload ---
+    const fileInput = document.getElementById('file-upload');
+    const uploadBtn = document.getElementById('upload-btn');
+    const uploadText = document.getElementById('upload-text');
+
+    uploadBtn.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        uploadText.textContent = 'Uploading...';
+        uploadBtn.disabled = true;
+
+        try {
+            const res = await fetch(`${API_BASE}/upload`, {
+                method: 'POST',
+                headers: authHeaders,
+                body: formData
+            });
+            const data = await res.json();
+            
+            if (res.ok) {
+                // Upload successful, activate this new dataset
+                selectDataset(data.dataset_id, true);
+            } else {
+                alert('Upload failed: ' + (data.detail || 'Unknown error'));
+            }
+        } catch (err) {
+            alert('Could not connect to server.');
+        } finally {
+            uploadText.textContent = 'Upload Dataset';
+            uploadBtn.disabled = false;
+            fileInput.value = '';
+        }
+    });
+
+    // --- Load Datasets ---
+    const datasetListEl = document.getElementById('dataset-list');
+
+    async function loadDatasets() {
+        try {
+            const res = await fetch(`${API_BASE}/datasets`, { headers: authHeaders });
+            const data = await res.json();
+            
+            if (data && data.length > 0) {
+                // Deduplicate repetitive datasets by file_name (keeps the most recent due to backend ORDER BY DESC)
+                const uniqueDatasets = [];
+                const seenFiles = new Set();
+                for (const d of data) {
+                    if (!seenFiles.has(d.file_name)) {
+                        seenFiles.add(d.file_name);
+                        uniqueDatasets.push(d);
+                    }
+                }
+
+                // If we don't have an active dataset, select the first unique one
+                if (!activeDatasetId && uniqueDatasets.length > 0) {
+                    selectDataset(uniqueDatasets[0].dataset_id, false);
+                    return; // selectDataset will call loadDatasets again anyway
+                }
+
+                datasetListEl.innerHTML = uniqueDatasets.map(d => `
+                    <div onclick="selectDataset('${d.dataset_id}', false)" 
+                         class="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${d.dataset_id === activeDatasetId ? 'bg-surface-container-high border-l-2 border-secondary' : 'hover:bg-surface-container-high/50 group border-l-2 border-transparent'}">
+                        <span class="material-symbols-outlined ${d.dataset_id === activeDatasetId ? 'text-secondary' : 'text-on-surface-variant/60'} text-lg">table_chart</span>
+                        <div class="flex-1 truncate block text-xs font-medium">${d.file_name}</div>
+                    </div>
+                `).join('');
+            } else {
+                datasetListEl.innerHTML = '<div class="px-3 text-xs text-on-surface-variant italic">No datasets uploaded yet...</div>';
+            }
+        } catch (err) {
+            console.error('Failed to load datasets', err);
+        }
+    }
+
+    const chatHistoryEl = document.getElementById('chat-history');
+
+    window.selectDataset = (id, forceReload = false) => {
+        // Prevent unnecessary re-renders if clicking the already active one
+        if (activeDatasetId === id && !forceReload) return;
+
+        // 1. Save current chat HTML to memory if we had an active chat
+        if (activeDatasetId) {
+            chatHistories[activeDatasetId] = chatHistoryEl.innerHTML;
+        }
+
+        // 2. Switch context
+        activeDatasetId = id;
+
+        // 3. Restore new context's chat HTML (or empty welcome screen)
+        if (chatHistories[activeDatasetId]) {
+            chatHistoryEl.innerHTML = chatHistories[activeDatasetId];
+        } else {
+            chatHistoryEl.innerHTML = WELCOME_HTML;
+        }
+        
+        // 4. Trigger UI re-render of sidebar
+        loadDatasets(); 
+        scrollToBottom();
+    };
+
+    // Initial load
+    loadDatasets();
+
+    // --- Chat Flow ---
+    const queryInput = document.getElementById('query-input');
+    const sendBtn = document.getElementById('send-btn');
+    
+    // Auto resize textarea
+    queryInput.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+        if (this.value.trim() === '') this.style.height = 'auto';
+    });
+
+    // Send on Enter (Shift+Enter for newline)
+    queryInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendQuery();
+        }
+    });
+
+    sendBtn.addEventListener('click', sendQuery);
+
+    function appendUserMessage(text) {
+        // Clear empty state if exists
+        if (chatHistoryEl.querySelector('.py-20')) {
+            chatHistoryEl.innerHTML = '';
+        }
+        
+        chatHistoryEl.innerHTML += `
+        <div class="flex flex-row-reverse gap-6 max-w-4xl ml-auto mb-8">
+            <div class="flex-shrink-0 w-8 h-8 rounded-full overflow-hidden mt-1 bg-primary-container shrink-0">
+               <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuBMyhsGVmAyiYqQNGJy-GZHCyTiEkHbiurV_h-BUfvt3QEUCCL6s9FTU9OCNwEUtr7j3upvIhJnYGwlERWbURh2mVs2YQIR1dyO11htNLUjqemDGstGUnaXIh4t9KNL6s6mqVXr9VkLibLx6hbeFUBWRsVXBCynlMxCWOeHoEOvxbgE3XS89U1IEp_1gppWP9E2DglOg2qY_AmJwpkN7JgT7xP-YwOO4pR03eePjKgFQVllDhD1A05PAV6b0VKH5jA1swHyO23CGemG" class="w-full h-full object-cover"/>
+            </div>
+            <div class="bg-primary-container text-on-primary-container px-6 py-4 rounded-2xl max-w-md shadow-sm">
+                <div class="text-white leading-relaxed font-body text-sm">${text}</div>
+            </div>
+        </div>`;
+        scrollToBottom();
+    }
+
+    function showThinkingIndicator() {
+        const id = 'thinking-' + Date.now();
+        chatHistoryEl.innerHTML += `
+        <div id="${id}" class="flex gap-6 max-w-4xl mb-8">
+            <div class="flex-shrink-0 w-8 h-8 mt-1">
+                <span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+            </div>
+            <div class="flex-1">
+                <div class="flex items-center gap-2 text-on-surface-variant/50 italic text-sm py-2">
+                    <span class="animate-pulse font-medium">Analyzing data...</span>
+                </div>
+            </div>
+        </div>`;
+        scrollToBottom();
+        return id;
+    }
+
+    function removeThinkingIndicator(id) {
+        const el = document.getElementById(id);
+        if (el) el.remove();
+    }
+
+    function appendSqlTableMessage(data_json, sql_str, row_count, err_msg) {
+        if (err_msg) {
+            chatHistoryEl.innerHTML += `
+            <div class="flex gap-6 max-w-4xl mb-8">
+                <div class="flex-shrink-0 w-8 h-8 mt-1">
+                    <span class="material-symbols-outlined text-red-500" style="font-variation-settings: 'FILL' 1;">error</span>
+                </div>
+                <div class="flex-1">
+                    <div class="bg-red-50 text-red-700 px-6 py-4 rounded-2xl shadow-sm border border-red-100/50">
+                        <div class="leading-relaxed font-body text-sm">${err_msg}</div>
+                    </div>
+                </div>
+            </div>`;
+            scrollToBottom();
+            return;
+        }
+
+        // Build Table
+        let tableHtml = '';
+        if (data_json && data_json.length > 0) {
+            const cols = Object.keys(data_json[0]);
+            
+            tableHtml = `
+            <div class="bg-surface-container-lowest rounded-xl border border-outline-variant/10 shadow-[0px_20px_40px_rgba(15,23,42,0.04)] mt-4 overflow-hidden">
+                <div class="px-6 py-4 border-b border-outline-variant/10 bg-slate-50/50 flex justify-between items-center">
+                    <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Results</span>
+                    <span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">${row_count} rows</span>
+                </div>
+                <div class="overflow-x-auto w-full">
+                    <table class="w-full text-left whitespace-nowrap">
+                        <thead class="border-b border-outline-variant/15 bg-slate-50">
+                            <tr class="text-on-surface-variant text-[10px] font-bold uppercase tracking-wider">
+                                ${cols.map(c => `<th class="py-3 px-4">${c}</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody class="text-sm divide-y divide-slate-100">
+                            ${data_json.map(row => `
+                                <tr class="hover:bg-slate-50 transition-colors">
+                                    ${cols.map(c => `
+                                        <td class="py-3 px-4 ${typeof row[c] === 'number' ? 'tabular-nums text-right font-medium' : ''}">
+                                            ${row[c] !== null ? row[c] : '<span class="text-slate-300 italic">null</span>'}
+                                        </td>
+                                    `).join('')}
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>`;
+        } else {
+            tableHtml = `
+            <div class="mt-4 p-4 border border-outline-variant/10 rounded-xl bg-slate-50 text-center text-sm text-slate-500 italic">
+                No rows returned.
+            </div>`;
+        }
+
+        // Output bubble with SQL toggle
+        chatHistoryEl.innerHTML += `
+        <div class="flex gap-6 max-w-4xl mb-8 w-full block">
+            <div class="flex-shrink-0 w-8 h-8 mt-1">
+                <span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+            </div>
+            <div class="flex-1 min-w-0 pr-4">
+                <div class="text-on-surface leading-relaxed text-sm font-body">Here are the results of your query:</div>
+                
+                ${tableHtml}
+
+                <details class="mt-4 group">
+                    <summary class="text-xs text-secondary font-medium cursor-pointer hover:underline list-none flex items-center gap-1 opacity-70 hover:opacity-100 select-none">
+                        <span class="material-symbols-outlined text-[14px]">code</span>
+                        View Generated SQL
+                    </summary>
+                    <div class="mt-2 p-3 bg-[#1e1e1e] rounded-lg border border-slate-800 overflow-x-auto">
+                        <pre class="text-emerald-400 text-xs font-mono mb-0">${sql_str}</pre>
+                    </div>
+                </details>
+            </div>
+        </div>`;
+        scrollToBottom();
+    }
+
+    function scrollToBottom() {
+        chatHistoryEl.scrollTo({ top: chatHistoryEl.scrollHeight, behavior: 'smooth' });
+    }
+
+    async function sendQuery() {
+        const text = queryInput.value.trim();
+        if (!text) return;
+        
+        if (!activeDatasetId) {
+            alert('Please upload or select a dataset first.');
+            return;
+        }
+
+        // Add user question
+        appendUserMessage(text);
+        
+        // Reset input
+        queryInput.value = '';
+        queryInput.style.height = 'auto';
+        
+        // Show thinking
+        const thinkId = showThinkingIndicator();
+
+        try {
+            const res = await fetch(`${API_BASE}/query`, {
+                method: 'POST',
+                headers: {
+                    ...authHeaders,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    question: text,
+                    dataset_id: activeDatasetId
+                })
+            });
+
+            const data = await res.json();
+            removeThinkingIndicator(thinkId);
+
+            if (!res.ok) {
+                appendSqlTableMessage(null, null, 0, data.detail || 'Failed to execute query.');
+            } else {
+                appendSqlTableMessage(data.data, data.sql, data.row_count, null);
+            }
+
+            // Immediately persist chat so navigating away keeps the exact layout
+            chatHistories[activeDatasetId] = chatHistoryEl.innerHTML;
+
+        } catch (err) {
+            removeThinkingIndicator(thinkId);
+            appendSqlTableMessage(null, null, 0, 'Network error while contacting the analytic engine.');
+        }
+    }
+
+</script>
+</body></html>
