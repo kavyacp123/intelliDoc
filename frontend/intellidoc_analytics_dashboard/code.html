@@ -459,6 +459,94 @@
         const thinkId = showThinkingIndicator();
 
         try {
+            // ── Step 1: Fetch AI Suggestions ──
+            const suggestRes = await fetch(`${API_BASE}/query/suggest`, {
+                method: 'POST',
+                headers: {
+                    ...authHeaders,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    question: text,
+                    dataset_id: activeDatasetId
+                })
+            });
+
+            let suggestions = [];
+            if (suggestRes.ok) {
+                const suggestData = await suggestRes.json();
+                suggestions = suggestData.suggestions || [];
+            }
+
+            removeThinkingIndicator(thinkId);
+
+            if (suggestions.length > 0) {
+                // Show suggestions as clickable chips + "Run original" option
+                showSuggestions(text, suggestions);
+            } else {
+                // No suggestions — execute directly
+                await executeFinalQuery(text);
+            }
+
+            // Persist chat state
+            chatHistories[activeDatasetId] = chatHistoryEl.innerHTML;
+
+        } catch (err) {
+            removeThinkingIndicator(thinkId);
+            appendSqlTableMessage(null, null, 0, 'Network error while contacting the analytic engine.');
+        }
+    }
+
+    function showSuggestions(originalQuery, suggestions) {
+        const suggestId = 'suggest-' + Date.now();
+        const chipsHtml = suggestions.map((s, i) => `
+            <button onclick="pickSuggestion('${suggestId}', \`${s.replace(/`/g, '\\`').replace(/'/g, "\\'")}\`)"
+                    class="inline-flex items-center gap-1.5 px-4 py-2.5 bg-white border border-secondary/20 text-secondary rounded-xl text-xs font-semibold shadow-sm hover:bg-secondary hover:text-white hover:border-secondary hover:shadow-md active:scale-95 transition-all duration-200 cursor-pointer">
+                <span class="material-symbols-outlined text-[14px]">auto_awesome</span>
+                ${s}
+            </button>
+        `).join('');
+
+        chatHistoryEl.innerHTML += `
+        <div id="${suggestId}" class="flex gap-6 max-w-4xl mb-8">
+            <div class="flex-shrink-0 w-8 h-8 mt-1">
+                <span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">lightbulb</span>
+            </div>
+            <div class="flex-1">
+                <div class="text-on-surface leading-relaxed text-sm font-body mb-3">
+                    <span class="font-semibold">I can help with that!</span> Did you mean one of these?
+                </div>
+                <div class="flex flex-wrap gap-2 mb-3">
+                    ${chipsHtml}
+                </div>
+                <button onclick="pickSuggestion('${suggestId}', \`${originalQuery.replace(/`/g, '\\`').replace(/'/g, "\\'")}\`)"
+                        class="inline-flex items-center gap-1.5 px-3 py-2 bg-surface-container-high/60 text-on-surface-variant rounded-lg text-[11px] font-medium hover:bg-surface-container-high active:scale-95 transition-all duration-200 cursor-pointer border border-outline-variant/20">
+                    <span class="material-symbols-outlined text-[13px]">play_arrow</span>
+                    Run original: "${originalQuery.length > 40 ? originalQuery.substring(0, 40) + '...' : originalQuery}"
+                </button>
+            </div>
+        </div>`;
+        scrollToBottom();
+    }
+
+    window.pickSuggestion = async (suggestId, query) => {
+        // Remove the suggestion chips UI
+        const suggestEl = document.getElementById(suggestId);
+        if (suggestEl) suggestEl.remove();
+
+        // Show selected query as a user message
+        appendUserMessage(query);
+
+        // Execute the query
+        await executeFinalQuery(query);
+
+        // Persist chat
+        chatHistories[activeDatasetId] = chatHistoryEl.innerHTML;
+    };
+
+    async function executeFinalQuery(text) {
+        const thinkId = showThinkingIndicator();
+        try {
             const res = await fetch(`${API_BASE}/query`, {
                 method: 'POST',
                 headers: {
@@ -480,14 +568,13 @@
                 appendSqlTableMessage(data.data, data.sql, data.row_count, null);
             }
 
-            // Immediately persist chat so navigating away keeps the exact layout
             chatHistories[activeDatasetId] = chatHistoryEl.innerHTML;
-
         } catch (err) {
             removeThinkingIndicator(thinkId);
             appendSqlTableMessage(null, null, 0, 'Network error while contacting the analytic engine.');
         }
     }
+
 
 </script>
 </body></html>

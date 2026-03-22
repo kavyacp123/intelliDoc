@@ -63,15 +63,35 @@ Rules:
 * Use ONLY available metrics and dimensions
 * Detect:
   * operation (aggregate, top_n, trend, comparison)
-  * group_by
-  * time_grain
-  * filters
+  * metric (a single column name to aggregate)
+  * dimensions (list of column names to select)
+  * group_by (list of column names to group by)
+  * time_grain (year, month, day)
+  * filters (list of filter objects)
+  * order ("asc" or "desc")
 * NEVER output SQL
 
 Intent Operation Rules:
-* "best", "top", "highest" -> operation = top_n
+* "best", "top", "highest" -> operation = top_n, order = "desc"
+* "worst", "bottom", "lowest", "least" -> operation = top_n, order = "asc"
 * "trend", "over time" -> operation = trend
 * "compare", "vs" -> operation = comparison
+
+ORDER RULES (CRITICAL):
+* "highest", "most", "top", "best", "maximum" -> order = "desc"
+* "lowest", "least", "bottom", "worst", "minimum" -> order = "asc"
+* Default: order = "desc"
+
+CRITICAL FILTER FORMAT:
+* filters MUST ALWAYS be a LIST of objects
+* Each filter object MUST have exactly: "column", "operator", "value"
+* NEVER return filters as a flat dictionary
+
+CORRECT filters format:
+  "filters": [{"column": "product", "operator": "=", "value": "Paseo"}]
+
+WRONG filters format (NEVER do this):
+  "filters": {"product": "Paseo"}
 """
 
     user_prompt = f"""Available Metrics:
@@ -87,17 +107,40 @@ User Question:
 {question}
 
 EXAMPLES:
-Input:
-"best product per year"
-
+Input: "how many units of Paseo were sold in Mexico"
 Output:
 {{
-"metric": "revenue",
-"dimensions": ["product"],
-"operation": "top_n",
-"group_by": ["year"],
-"rank": 1,
-"time_grain": "year"
+  "metric": "quantity",
+  "dimensions": [],
+  "operation": "aggregate",
+  "group_by": [],
+  "order": "desc",
+  "filters": [{{"column": "product", "operator": "=", "value": "Paseo"}}, {{"column": "country", "operator": "=", "value": "Mexico"}}]
+}}
+
+Input: "best product per year"
+Output:
+{{
+  "metric": "revenue",
+  "dimensions": ["product"],
+  "operation": "top_n",
+  "group_by": ["year"],
+  "rank": 1,
+  "order": "desc",
+  "time_grain": "year",
+  "filters": []
+}}
+
+Input: "lowest revenue category by region"
+Output:
+{{
+  "metric": "revenue",
+  "dimensions": ["category"],
+  "operation": "top_n",
+  "group_by": ["region"],
+  "rank": 1,
+  "order": "asc",
+  "filters": []
 }}
 """
 

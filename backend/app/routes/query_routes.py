@@ -37,6 +37,8 @@ from app.services.intent_validator import validate_intent, IntentValidationError
 from app.services.metric_resolver import resolve_metric
 from app.services.time_resolver import resolve_time
 from app.services.query_builder import build_query
+from app.services.table_router import route_query
+from app.services.logic_enforcer import enforce_logic
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +125,19 @@ async def query_data(
                 table_name=table_name,
                 semantics=semantics if semantics else None,
             )
+
+            # ── 5.5 Normalize filters (LLM safety net) ──
+            raw_filters = intent_json.get("filters")
+            if isinstance(raw_filters, dict):
+                # Convert {"product": "Paseo"} → [{"column": "product", "operator": "=", "value": "Paseo"}]
+                intent_json["filters"] = [
+                    {"column": k, "operator": "=", "value": v}
+                    for k, v in raw_filters.items()
+                ]
+                logger.info("Normalized filters from dict to list: %s", intent_json["filters"])
+            elif raw_filters is None:
+                intent_json["filters"] = []
+
             intent_obj = QueryIntent(**intent_json)
             
             # Construct a schema mapping for the Resolvers and Hybrid Engine
@@ -175,10 +190,18 @@ async def query_data(
             
             # ── 10. Query Builder ──
             sql = build_query(intent_obj, plan, current_user)
+            
+            # ── 11. Schema-Aware Table Router ──
+            sql = route_query(sql, plan, table_name)
+            
+            # ── 12. Post-SQL Logic Enforcer ──
+            sql = enforce_logic(sql, intent_obj.order, normalized_question)
+            
             await CacheService.set_sql({"cache_key": cache_key}, sql)
         except Exception as e:
             if isinstance(e, HTTPException):
                 raise
+            logger.error("Query generation failed: %s", e, exc_info=True)
             raise HTTPException(
                 status_code=422,
                 detail=f"Could not generate SQL from question: {str(e)}",
@@ -273,6 +296,41 @@ async def query_data(
         explanation=explanation,
         insights=insights
     )
+
+
+@router.post(
+    "/query/suggest",
+    summary="Get AI-powered query suggestions for ambiguous questions",
+)
+async def suggest_queries(
+    request: QueryRequest,
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Returns 3 clarified query suggestions based on the user's question
+    and the dataset's actual schema.
+    """
+    from app.services.suggestion_service import generate_suggestions
+
+    dataset_id = request.dataset_id
+    if not dataset_id:
+        raise HTTPException(status_code=400, detail="dataset_id is required")
+
+    # Get schema for this dataset
+    schemas: list[TableMetadata] = []
+    metadata = schema_service.get_dataset_schema(dataset_id)
+    if metadata:
+        schemas = [metadata]
+
+    if not schemas:
+        return {"suggestions": []}
+
+    suggestions = generate_suggestions(
+        question=request.question,
+        schemas=schemas,
+    )
+
+    return {"suggestions": suggestions}
 
 
 @router.post("/query/validate-raw", summary="Test query validation logic directly")
