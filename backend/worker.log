@@ -21,3 +21,8 @@
 [2026-03-21 17:50:08,956: INFO/MainProcess] mingle: searching for neighbors
 [2026-03-21 17:50:09,961: INFO/MainProcess] mingle: all alone
 [2026-03-21 17:50:09,988: INFO/MainProcess] celery@Kavyas-MacBook-Air.local ready.
+
+worker: Warm shutdown (MainProcess)
+
+SIGHUP not supported: Restarting with SIGHUP is unstable on this platform!
+[2026-03-22 12:05:03,470: ERROR/MainProcess] Process 'ForkPoolWorker-4' pid:26482 exited with 'exitcode 70'

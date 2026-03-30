@@ -67,7 +67,7 @@ app = FastAPI(
 # ── CORS Middleware ──
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"], 
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -111,9 +111,13 @@ async def rate_limit_middleware(request: Request, call_next):
 
 
 # ── Register Routers ──
+from app.routes import auth_routes, dataset_routes, query_routes, history_routes, dashboard_routes
+
 app.include_router(auth_routes.router)
 app.include_router(dataset_routes.router)
 app.include_router(query_routes.router)
+app.include_router(history_routes.router)
+app.include_router(dashboard_routes.router)
 
 
 # ── Health Check ──

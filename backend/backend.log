@@ -189,3 +189,23 @@ Candidate bindings: "month_name", "month_number", "country", "segment", "discoun
 LINE 1: ... tenant_id = 'f19a3412-bef6-4306-bd84-ad8988f6888b' GROUP BY _month ORDER BY total DESC LIMIT 10
                                                                         ^ | SQL: SELECT _month, SUM(profit) as total FROM dataset_0f36a4c6_8c00_4c7f_a9d9_9d27c4fb9436 WHERE tenant_id = 'f19a3412-bef6-4306-bd84-ad8988f6888b' GROUP BY _month ORDER BY total DESC LIMIT 10
 INFO:     127.0.0.1:53630 - "POST /query HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:55625 - "OPTIONS /datasets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55625 - "GET /datasets HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:55627 - "OPTIONS /upload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55627 - "POST /upload HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:55863 - "OPTIONS /register HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:55879 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55879 - "GET /openapi.json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55929 - "POST /register HTTP/1.1" 409 Conflict
+INFO:     127.0.0.1:55985 - "OPTIONS /register HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:56413 - "OPTIONS /register HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:56441 - "HEAD /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56485 - "OPTIONS /register HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:56485 - "OPTIONS /register HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:56485 - "OPTIONS /register HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:56504 - "OPTIONS /register HTTP/1.1" 400 Bad Request
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+2026-03-22 11:47:16,183 | INFO     | app.main | 🛑 Database connection closed
+INFO:     Application shutdown complete.
+INFO:     Finished server process [25637]

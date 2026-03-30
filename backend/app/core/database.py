@@ -79,6 +79,17 @@ def init_db() -> None:
         # Column likely already exists
         pass
 
+    # Chat history — stores conversational context per dataset
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id          VARCHAR PRIMARY KEY,    -- message id from frontend
+            dataset_id  VARCHAR NOT NULL,
+            tenant_id   VARCHAR NOT NULL,
+            message     VARCHAR NOT NULL,       -- JSON serialized message object
+            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
 
 def close_db() -> None:
     """Close the database connection (called on shutdown)."""

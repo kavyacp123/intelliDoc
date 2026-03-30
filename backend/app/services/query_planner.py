@@ -18,7 +18,7 @@ class QueryPlanner:
         cost = estimate_cost(intent, metadata)
         plan["estimated_cost"] = cost
         
-        if cost < 1e5:
+        if cost < 1e7:
             plan["execution_mode"] = "sync"
         else:
             plan["execution_mode"] = "async"

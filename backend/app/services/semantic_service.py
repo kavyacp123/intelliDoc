@@ -23,45 +23,19 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────
-# 1. SYNONYM MAPPING
-#    Maps user-facing words → canonical column/concept names.
-#    Applied to the question BEFORE it reaches the LLM.
+# 1. SYNONYM MAPPING (DEPRECATED)
+#    We now rely on the LLM's intrinsic semantic understanding
+#    to dynamically map terms based on the precise dataset schema.
 # ─────────────────────────────────────────────
-SYNONYMS: Dict[str, str] = {
-    # Cost concepts
-    "expense":    "cogs",
-    "expenses":   "cogs",
-    "cost":       "cogs",
-    "costs":      "cogs",
-    "spending":   "cogs",
-    # Revenue concepts
-    "income":     "revenue",
-    "earnings":   "revenue",
-    "turnover":   "revenue",
-    "sales":      "revenue",
-    "gross":      "revenue",
-    # Profit concepts
-    "net":        "profit",
-    "margin":     "profit",
-    "gain":       "profit",
-    # Quantity concepts
-    "units":      "quantity",
-    "items":      "quantity",
-    "volume":     "quantity",
-    "count":      "quantity",
-}
+SYNONYMS: Dict[str, str] = {}
 
 
 def normalize_question(question: str) -> str:
     """
     Apply synonym normalization to a user question.
 
-    Replaces business synonyms with canonical terms that match
-    the dataset columns or inferred metric names.
-
-    Examples:
-        "Show me income by region" → "Show me revenue by region"
-        "Total expense per category" → "Total cogs per category"
+    (Deprecated: Simply returns the raw question, as the LLM now 
+    dynamically maps terms to the injected column schema.)
     """
     normalized = question
     q_lower = question.lower()
@@ -157,8 +131,14 @@ def infer_semantics(schema: TableMetadata) -> Dict[str, str]:
         semantics["total_revenue"] = "SUM(revenue)"
     elif "income" in cols:
         semantics["total_revenue"] = "SUM(income)"
+    elif "gross_total" in cols:
+        semantics["total_revenue"] = "SUM(gross_total)"
+    elif "net_total" in cols:
+        semantics["total_revenue"] = "SUM(net_total)"
     elif "sales" in cols:
         semantics["total_revenue"] = "SUM(sales)"
+    elif "value" in cols:
+        semantics["total_revenue"] = "SUM(value)"
 
     # ── Cost/Expense variants ──
     if "cogs" in cols:

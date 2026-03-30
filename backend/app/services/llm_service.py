@@ -50,7 +50,7 @@ def generate_intent_json(
                 
     # Add inferred semantics (if any) to available metrics
     metrics = all_columns.copy()
-    if semantics:
+    if semantics is not None:
         metrics.extend(semantics.keys())
 
     system_prompt = """You are an analytics intent parser.
@@ -61,6 +61,9 @@ Rules:
 * DO NOT generate SQL
 * ONLY return valid JSON
 * Use ONLY available metrics and dimensions
+* CRITICAL SEMANTIC MAPPING: You must map broad business terms in the user's query to the precise available column that best matches. 
+  - e.g. If they ask for "customer" or "client", map it to "buyer", "client_name", etc.
+  - e.g. If they ask for "value", "sales", or "revenue", map it to "gross_total", "amount", "net_sales", etc.
 * Detect:
   * operation (aggregate, top_n, trend, comparison)
   * metric (a single column name to aggregate)

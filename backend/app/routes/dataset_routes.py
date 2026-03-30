@@ -116,6 +116,46 @@ async def list_datasets(current_user: str = Depends(get_current_user)):
         for row in rows
     ]
 
+@router.delete(
+    "/datasets/{dataset_id}",
+    summary="Delete a dataset",
+)
+async def delete_dataset(dataset_id: str, current_user: str = Depends(get_current_user)):
+    """Deletes the dataset metadata and all physical DuckDB tables/views for it."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT table_name FROM datasets WHERE dataset_id = ? AND tenant_id = ?",
+        [dataset_id, current_user]
+    ).fetchone()
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+        
+    table_name = row[0]
+    try:
+        conn.execute("BEGIN TRANSACTION")
+        
+        # Drop logic: get all matching tables/views
+        tables = [r[0] for r in conn.execute("SHOW TABLES").fetchall()]
+        for t in tables:
+            if t == table_name or t.startswith(f"{table_name}_"):
+                try:
+                    conn.execute(f'DROP VIEW IF EXISTS "{t}"')
+                except: pass
+                try:
+                    conn.execute(f'DROP TABLE IF EXISTS "{t}"')
+                except: pass
+                
+        conn.execute("DELETE FROM datasets WHERE dataset_id = ?", [dataset_id])
+        conn.execute("DELETE FROM dataset_metadata WHERE dataset_id = ?", [dataset_id])
+        conn.execute("DELETE FROM chat_history WHERE dataset_id = ?", [dataset_id])
+        conn.execute("COMMIT")
+    except Exception as e:
+        conn.execute("ROLLBACK")
+        raise HTTPException(status_code=500, detail=f"Failed to delete: {e}")
+        
+    return {"status": "deleted"}
+
 
 @router.get(
     "/datasets/{dataset_id}/schema",

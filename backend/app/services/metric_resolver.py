@@ -11,7 +11,7 @@ def resolve_metric(intent: QueryIntent, schema: dict) -> str:
         return intent.metric
         
     # Search for known standard fallbacks if requested metric is invalid/ambiguous
-    for m in ["revenue", "sales", "profit", "gross_sales"]:
+    for m in ["revenue", "sales", "gross_total", "net_total", "profit", "gross_sales", "value", "amount", "total"]:
         if m in metrics_list:
             intent.resolved_metric = m
             return m

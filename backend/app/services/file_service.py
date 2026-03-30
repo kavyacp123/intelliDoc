@@ -17,7 +17,7 @@ import pandas as pd
 
 from app.core.database import get_connection
 from app.models.metadata import ColumnMeta, TableMetadata
-from app.utils.parser_utils import infer_column_types, normalize_columns
+from app.utils.parser_utils import infer_column_types, clean_dataframe
 from app.services.aggregation_service import run_pre_aggregations
 
 
@@ -55,8 +55,8 @@ def process_upload(
     if df.empty:
         raise ValueError("Uploaded file contains no data")
 
-    # ── Step 2: Normalize column names ──
-    df = normalize_columns(df)
+    # ── Step 2: Clean and Normalize DataFrame ──
+    df = clean_dataframe(df)
     
     # ── Step 2.5: Auto-cast datetime columns to avoid DuckDB VARCHAR errors ──
     for col in df.columns:
@@ -144,11 +144,31 @@ def _parse_file(file_bytes: bytes, file_name: str) -> pd.DataFrame:
         return pd.read_csv(buffer)
     elif ext in ("xlsx", "xls"):
         try:
-            return pd.read_excel(buffer, engine="openpyxl")
+            # Read all sheets to find the one with the most data
+            sheets = pd.read_excel(buffer, sheet_name=None)
+            best_sheet = None
+            max_len = -1
+            for name, sheet_df in sheets.items():
+                if len(sheet_df) > max_len:
+                    max_len = len(sheet_df)
+                    best_sheet = sheet_df
+            return best_sheet if best_sheet is not None else pd.DataFrame()
         except zipfile.BadZipFile:
             raise ValueError("The uploaded Excel file appears to be corrupted or invalid.")
+        except Exception as e:
+            raise ValueError(f"Failed to parse Excel file: {e}")
     elif ext == "json":
-        return pd.read_json(buffer)
+        import json
+        try:
+            data = json.load(buffer)
+            from app.utils.parser_utils import flatten_json_to_df
+            if isinstance(data, list):
+                return flatten_json_to_df(data)
+            else:
+                return flatten_json_to_df([data])
+        except Exception:
+            buffer.seek(0)
+            return pd.read_json(buffer)
     else:
         raise ValueError(
             f"Unsupported file format: .{ext}. "
