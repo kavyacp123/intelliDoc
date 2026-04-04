@@ -118,6 +118,8 @@ async def query_data(
 
     if not sql:
         try:
+            from app.models.intent import MultiStepPlan
+            
             # ── 5. LLM -> Intent JSON ──
             intent_json = llm_service.generate_intent_json(
                 question=normalized_question,
@@ -126,19 +128,8 @@ async def query_data(
                 semantics=semantics if semantics else None,
             )
 
-            # ── 5.5 Normalize filters (LLM safety net) ──
-            raw_filters = intent_json.get("filters")
-            if isinstance(raw_filters, dict):
-                # Convert {"product": "Paseo"} → [{"column": "product", "operator": "=", "value": "Paseo"}]
-                intent_json["filters"] = [
-                    {"column": k, "operator": "=", "value": v}
-                    for k, v in raw_filters.items()
-                ]
-                logger.info("Normalized filters from dict to list: %s", intent_json["filters"])
-            elif raw_filters is None:
-                intent_json["filters"] = []
-
-            intent_obj = QueryIntent(**intent_json)
+            # ── 5.5 Create MultiStepPlan ──
+            plan_obj = MultiStepPlan(**intent_json)
             
             # Construct a schema mapping for the Resolvers and Hybrid Engine
             schema_dict = {
@@ -149,11 +140,11 @@ async def query_data(
             }
             
             # ── 6. Intent Processor (Hybrid Rules) ──
-            intent_obj = enhance_intent(intent_obj, normalized_question, schema_dict)
+            plan_obj = enhance_intent(plan_obj, normalized_question, schema_dict)
             
             # ── 7. Resolvers ──
-            resolve_metric(intent_obj, schema_dict)
-            resolve_time(intent_obj, schema_dict)
+            resolve_metric(plan_obj, schema_dict)
+            resolve_time(plan_obj, schema_dict)
             
             # ── 8. Intent Validator ──
             allowed_columns_for_intent = set(allowed_columns)
@@ -161,9 +152,9 @@ async def query_data(
                 allowed_columns_for_intent.update(semantics.keys())
 
             try:
-                validate_intent(intent_obj, allowed_columns_for_intent)
+                validate_intent(plan_obj, allowed_columns_for_intent)
             except IntentValidationError as e:
-                # ── Friendly column-not-found response ──
+                # Friendly column-not-found response
                 suggestion = fuzzy_match_column(e.invalid_column, list(allowed_columns_for_intent)) if e.invalid_column else None
                 inferred = infer_semantics(schemas[0]) if schemas else {}
                 metric_names = list(inferred.keys())
@@ -179,25 +170,37 @@ async def query_data(
                 )
                 return JSONResponse(status_code=400, content=hint.model_dump())
 
-            # ── 9. Query Optimizer Layer (V4 Multi-Plan) ──
-            plan = QueryPlanner.plan(intent_obj, schema_dict, schemas[0].to_dict())
+            from app.services.orchestrator import Orchestrator
+            # Orchestrator handles all steps and execution dynamically
+            result = Orchestrator.execute_plan(plan_obj, table_name, current_user)
+            data = result["data"]
+            sql = result["sqls"][-1] if result["sqls"] else "SELECT 1"
+            safe_sql = sql
             
-            # ── 9.5 Budget Enforcer ──
-            enforce_budget(plan)
+            await CacheService.set_result(safe_sql, current_user, data)
             
-            execution_plan = plan
-            explanation = explanation_service.generate_explanation(intent_obj, plan)
+            execution_plan = {"strategy": plan_obj.query_type, "execution_mode": "sync", "estimated_cost": 10}
+            explanation = {"optimization": plan_obj.final_output.description}
             
-            # ── 10. Query Builder ──
-            sql = build_query(intent_obj, plan, current_user)
+            from app.services.insight_service import generate_insights
+            insights_res = generate_insights(data, normalized_question, safe_sql, plan_obj)
             
-            # ── 11. Schema-Aware Table Router ──
-            sql = route_query(sql, plan, table_name)
+            # Use LLM recommendation if available, otherwise heuristic
+            if insights_res.chart:
+                chart_hint = insights_res.chart.type
+            else:
+                chart_hint = llm_service._infer_chart_hint(normalized_question)
             
-            # ── 12. Post-SQL Logic Enforcer ──
-            sql = enforce_logic(sql, intent_obj.order, normalized_question)
+            return QueryResponse(
+                data=data,
+                sql=safe_sql,
+                chart_hint=chart_hint,
+                row_count=len(data),
+                execution_plan=execution_plan,
+                explanation=explanation,
+                insights=insights_res
+            )
             
-            await CacheService.set_sql({"cache_key": cache_key}, sql)
         except Exception as e:
             if isinstance(e, HTTPException):
                 raise
@@ -207,7 +210,6 @@ async def query_data(
                 detail=f"Could not generate SQL from question: {str(e)}",
             )
 
-    logger.info("Generated SQL:\n%s", sql)
     
     # ── 6. AST SQL Security Validation ──
     # We still validate the built SQL securely as a final sanity check against injections
@@ -248,7 +250,7 @@ async def query_data(
             row_count=len(cached_result),
             execution_plan={"strategy": "cache", "execution_mode": "sync", "estimated_cost": 0},
             explanation={"optimization": "Instant read from query cache mapping"},
-            insights=[]
+            insights=None
         )
 
     # ── Async Routing for Heavy Queries ──
@@ -294,7 +296,7 @@ async def query_data(
         row_count=len(data),
         execution_plan=execution_plan,
         explanation=explanation,
-        insights=insights
+        insights=None
     )
 
 

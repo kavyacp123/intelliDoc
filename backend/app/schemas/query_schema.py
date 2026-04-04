@@ -28,6 +28,39 @@ class StructuredIntent(BaseModel):
     table_name: Optional[str] = None
 
 
+class SummaryCard(BaseModel):
+    title: str
+    value: str
+    description: str
+
+class KPICard(BaseModel):
+    title: str
+    value: Any
+    description: str
+
+class Chart(BaseModel):
+    type: str
+    x_axis: Optional[str] = None
+    y_axis: Optional[str] = None
+    series: Optional[str] = None
+    reason: str
+
+class InsightPanel(BaseModel):
+    type: str
+    text: str
+
+class Anomaly(BaseModel):
+    text: str
+    severity: str
+
+class DashboardResponse(BaseModel):
+    summary_card: SummaryCard
+    kpi_cards: List[KPICard] = []
+    chart: Optional[Chart] = None
+    insights_panel: List[InsightPanel] = []
+    anomalies: List[Anomaly] = []
+
+
 class QueryResponse(BaseModel):
     """POST /query response with results and transparency info."""
 
@@ -42,7 +75,7 @@ class QueryResponse(BaseModel):
     # execution profile mappings
     execution_plan: Optional[Dict[str, Any]] = None
     explanation: Optional[Dict[str, Any]] = None
-    insights: List[str] = []
+    insights: Optional[DashboardResponse] = None
 
 
 class AsyncJobResponse(BaseModel):

@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { Sidebar } from '../components/dashboard/Sidebar';
 import { DataTable } from '../components/dashboard/DataTable';
 import { SuggestionBox } from '../components/dashboard/SuggestionBox';
+import { DashboardPanel } from '../components/dashboard/DashboardPanel';
 import { Button } from '../components/ui';
 
 interface Message {
@@ -15,6 +16,7 @@ interface Message {
   error?: string;
   suggestions?: string[];
   originalQuery?: string;
+  insights?: any;
 }
 
 const DashboardPage: React.FC = () => {
@@ -251,7 +253,8 @@ const DashboardPage: React.FC = () => {
           type: 'assistant',
           data: data.data,
           sql: data.sql,
-          rowCount: data.row_count
+          rowCount: data.row_count,
+          insights: data.insights
         });
       } else {
         addMessage(datasetId, {
@@ -352,8 +355,16 @@ const DashboardPage: React.FC = () => {
                           </div>
                         ) : (
                           <>
-                            <p className="text-sm text-on-surface mb-4">Here are the results of your query:</p>
-                            <DataTable data={msg.data || []} rowCount={msg.rowCount || 0} />
+                            {msg.insights ? (
+                              <div className="mt-4">
+                                <DashboardPanel insights={msg.insights} data={msg.data || []} rowCount={msg.rowCount || 0} />
+                              </div>
+                            ) : (
+                              <>
+                                <p className="text-sm text-on-surface mb-4">Here are the results of your query:</p>
+                                <DataTable data={msg.data || []} rowCount={msg.rowCount || 0} />
+                              </>
+                            )}
                             {msg.sql && (
                               <details className="mt-4 group">
                                 <summary className="text-xs text-secondary font-medium cursor-pointer hover:underline list-none flex items-center gap-1 opacity-70 hover:opacity-100">

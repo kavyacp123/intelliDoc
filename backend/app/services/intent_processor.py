@@ -39,54 +39,53 @@ def _extract_limit_number(question: str) -> int | None:
     return None
 
 
-def enhance_intent(intent: QueryIntent, question: str, schema: dict) -> QueryIntent:
+from app.models.intent import MultiStepPlan, StepIntent
+
+def enhance_intent(plan: MultiStepPlan, question: str, schema: dict) -> MultiStepPlan:
     """
     Hybrid Rule Engine: applies deterministic python rules to augment
-    or override LLM intent. These rules are AUTHORITATIVE — they take
-    precedence over LLM output for critical logic like ordering.
+    or override LLM intent. Applied to each step.
     """
     q = question.lower()
     
-    # ── Operation Detection (stronger than LLM) ──
-    if any(word in q for word in ["top", "best", "highest", "bottom", "worst", "lowest", "least"]):
-        intent.operation = "top_n"
-        
-    if "trend" in q or "over time" in q:
-        intent.operation = "trend"
-        
-    if "compare" in q or " vs " in q:
-        intent.operation = "comparison"
+    for step in plan.steps:
+        # ── Operation Detection (stronger than LLM) ──
+        if any(word in q for word in ["top", "best", "highest", "bottom", "worst", "lowest", "least"]):
+            if step.intent_type != "row_level":
+                step.intent_type = "top_n"
+            
+        if "trend" in q or "over time" in q:
+            if step.intent_type != "row_level":
+                step.intent_type = "trend"
+            
+        if "compare" in q or " vs " in q:
+            if step.intent_type != "row_level":
+                step.intent_type = "comparison"
 
-    # ── ORDER ENFORCEMENT (critical — never trust LLM for this) ──
-    intent.order = _detect_order(question)
-        
-    # ── Default metric resolution ──
-    if not intent.metric:
-        for m in ["revenue", "sales", "profit", "quantity", "gross_sales"]:
-            if m in schema.get("metrics", []):
-                intent.metric = m
-                break
-                
-    # ── Default dimension ──
-    if not intent.dimensions and schema.get("dimensions"):
-        intent.dimensions = [schema.get("dimensions")[0]]
-        
-    # ── Limit enforcement ──
-    explicit_limit = _extract_limit_number(question)
-    if explicit_limit:
-        intent.rank = explicit_limit
-        intent.limit = explicit_limit
-    elif intent.operation == "top_n" and not getattr(intent, 'rank', None):
-        intent.rank = 1
-        
-    # ── Implicit time grain ──
-    if not intent.time_grain and intent.operation == "trend":
-        intent.time_grain = "month"
-        
-    if intent.group_by and not intent.time_grain:
-        if "year" in intent.group_by:
-            intent.time_grain = "year"
-        elif "month" in intent.group_by:
-            intent.time_grain = "month"
+        # ── ORDER ENFORCEMENT (critical) ──
+        if step.order is None or step.order == "NONE":
+             if step.intent_type == "top_n":
+                 step.order = _detect_order(question)
+                 # Re-apply for edge case overrides
+                 if any(kw in q for kw in _ASC_KEYWORDS): step.order = "asc"
+                 if any(kw in q for kw in _DESC_KEYWORDS): step.order = "desc"
+            
+        # ── Default metric resolution ──
+        if not step.metric and step.intent_type != "row_level":
+            for m in ["revenue", "sales", "profit", "quantity", "gross_sales"]:
+                if m in schema.get("metrics", []):
+                    step.metric = m
+                    break
+                    
+        # ── Default dimension ──
+        if not step.dimensions and schema.get("dimensions") and step.intent_type != "row_level":
+            step.dimensions = [schema.get("dimensions")[0]]
+            
+        # ── Limit enforcement ──
+        explicit_limit = _extract_limit_number(question)
+        if explicit_limit:
+            step.limit = explicit_limit
+        elif step.intent_type == "top_n" and not step.limit:
+            step.limit = 1
 
-    return intent
+    return plan
