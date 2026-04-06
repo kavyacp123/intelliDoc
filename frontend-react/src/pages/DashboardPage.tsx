@@ -267,6 +267,37 @@ const DashboardPage: React.FC = () => {
       throw err;
     }
   };
+  
+  const handleDownloadExcel = async (question: string) => {
+    if (!activeDatasetId) return;
+    
+    try {
+      const res = await fetch('http://localhost:8000/query/export', {
+        method: 'POST',
+        headers: { ...authHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, dataset_id: activeDatasetId })
+      });
+      
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.detail || 'Export failed');
+        return;
+      }
+      
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `intelliDoc_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      console.error('Export error', err);
+      alert('Failed to download Excel file');
+    }
+  };
 
   return (
     <div 
@@ -288,6 +319,7 @@ const DashboardPage: React.FC = () => {
       <header className="h-14 w-full flex items-center justify-between px-6 bg-white border-b border-outline-variant/15 z-50">
         <h1 className="font-headline font-extrabold text-xl tracking-tighter text-slate-900">intelliDoc</h1>
         <div className="flex items-center gap-4">
+          <Button variant="secondary" onClick={() => window.location.href='/executive-dashboard'} className="text-xs font-semibold">Executive Dashboard</Button>
           <Button variant="ghost" onClick={logout} className="text-xs font-semibold">Logout</Button>
           <div className="w-8 h-8 rounded-full bg-primary-container border border-outline-variant/30 overflow-hidden">
             <img 
@@ -365,16 +397,30 @@ const DashboardPage: React.FC = () => {
                                 <DataTable data={msg.data || []} rowCount={msg.rowCount || 0} />
                               </>
                             )}
-                            {msg.sql && (
-                              <details className="mt-4 group">
-                                <summary className="text-xs text-secondary font-medium cursor-pointer hover:underline list-none flex items-center gap-1 opacity-70 hover:opacity-100">
-                                  <span className="material-symbols-outlined text-[14px]">code</span>
-                                  View Generated SQL
-                                </summary>
-                                <div className="mt-2 p-3 bg-slate-900 rounded-lg border border-slate-800 overflow-x-auto">
-                                  <pre className="text-emerald-400 text-xs font-mono">{msg.sql}</pre>
-                                </div>
-                              </details>
+
+                            {msg.data && msg.data.length > 0 && (
+                              <div className="mt-4 flex flex-wrap gap-2">
+                                <Button 
+                                  variant="ghost" 
+                                  className="text-[10px] h-7 px-3 flex items-center gap-1.5 opacity-60 hover:opacity-100 hover:bg-surface-container-high border border-outline-variant/10 rounded-full"
+                                  onClick={() => handleDownloadExcel(msg.originalQuery || msg.content || '')}
+                                >
+                                  <span className="material-symbols-outlined text-[14px]">download</span>
+                                  Download Findings (XLSX)
+                                </Button>
+                                
+                                {msg.sql && (
+                                  <details className="inline-block group">
+                                    <summary className="text-[10px] h-7 px-3 flex items-center gap-1.5 opacity-60 hover:opacity-100 hover:bg-surface-container-high border border-outline-variant/10 rounded-full cursor-pointer list-none">
+                                      <span className="material-symbols-outlined text-[14px]">code</span>
+                                      SQL View
+                                    </summary>
+                                    <div className="absolute left-0 mt-2 p-3 bg-slate-900 rounded-lg border border-slate-800 overflow-x-auto z-40 max-w-full shadow-2xl">
+                                      <pre className="text-emerald-400 text-[10px] font-mono leading-tight">{msg.sql}</pre>
+                                    </div>
+                                  </details>
+                                )}
+                              </div>
                             )}
                           </>
                         )}

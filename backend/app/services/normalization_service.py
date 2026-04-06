@@ -8,13 +8,19 @@ class NormalizationService:
     
     # Standard concepts and their keyword mappings
     CONCEPT_MAPPING = {
-        "revenue": ["revenue", "sales", "earnings", "income", "turnover", "gross_sales"],
-        "cost": ["cost", "expense", "expenditure", "cogs", "spending", "total_cost"],
-        "profit": ["profit", "net_income", "margin", "earnings_after_tax", "ebidta"],
-        "stock": ["stock", "inventory", "quantity", "units", "supply", "on_hand"],
-        "receivables": ["receivables", "accounts_receivable", "debtors", "pending_payments"],
-        "time": ["date", "time", "month", "year", "quarter", "timestamp", "period"],
-        "category": ["category", "segment", "product", "region", "country", "industry", "type"]
+        "revenue": ["revenue", "sales", "earnings", "income", "turnover", "gross_sales", "net_sales"],
+        "cogs": ["cogs", "cost_of_goods_sold", "direct_costs", "cost_of_sales", "material_costs"],
+        "opex_sales": ["sales_expense", "selling_costs", "advertising", "promotions"],
+        "opex_marketing": ["marketing", "ad_spend", "brand_expense", "market_research"],
+        "opex_ga": ["general_and_administrative", "admin", "rent", "salaries", "utilities", "office_costs"],
+        "opex": ["opex", "operating_expense", "indirect_costs", "overhead"],
+        "interest": ["interest", "finance_costs", "borrowing_costs"],
+        "tax": ["tax", "income_tax", "vat", "gst", "corporate_tax"],
+        "other_income": ["other_income", "interest_earned", "investment_income"],
+        "other_expenses": ["other_expenses", "miscellaneous", "fines", "penalties"],
+        "time": ["date", "time", "month", "year", "quarter", "timestamp", "period", "fiscal_year"],
+        "category": ["category", "segment", "product", "region", "country", "industry", "type"],
+        "target": ["target", "budget", "forecast", "goal", "expected"]
     }
 
     @classmethod

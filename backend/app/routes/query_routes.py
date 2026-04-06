@@ -1,8 +1,10 @@
 import logging
 from typing import Any, Dict, List, Optional, Union
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Query as FastAPIQuery
+from fastapi.responses import JSONResponse, StreamingResponse
+import pandas as pd
+import io
 
 from app.core.database import get_connection
 from app.core.security import get_current_user
@@ -42,6 +44,14 @@ from app.services.logic_enforcer import enforce_logic
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Query"])
+
+def _filter_tenant_id(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Remove tenant_id from result set to ensure data privacy in UI/exports."""
+    if not data:
+        return data
+    for row in data:
+        row.pop("tenant_id", None)
+    return data
 
 
 # Removed duplicate AsyncJobResponse
@@ -172,7 +182,7 @@ async def query_data(
             from app.services.orchestrator import Orchestrator
             # Orchestrator handles all steps and execution dynamically
             result = Orchestrator.execute_plan(plan_obj, table_name, current_user)
-            data = result["data"]
+            data = _filter_tenant_id(result["data"])
             sql = result["sqls"][-1] if result["sqls"] else "SELECT 1"
             safe_sql = sql
             
@@ -242,6 +252,7 @@ async def query_data(
     cached_result = await CacheService.get_result(safe_sql, current_user)
     if cached_result is not None:
         logger.info("Result cache hit.")
+        cached_result = _filter_tenant_id(cached_result)
         return QueryResponse(
             data=cached_result,
             sql=safe_sql,
@@ -278,6 +289,7 @@ async def query_data(
         except Exception as feedback_err:
             logger.warning("Feedback loop update failed: %s", feedback_err)
 
+        data = _filter_tenant_id(data)
         await CacheService.set_result(safe_sql, current_user, data)
         
         # Generate Insights (V4)
@@ -407,7 +419,83 @@ async def get_async_result(job_id: str, current_user: str = Depends(get_current_
     return {
         "status": "completed",
         "job_id": job_id,
-        "data": outcome.get("data"),
+        "data": _filter_tenant_id(outcome.get("data", [])),
         "sql": outcome.get("sql"),
     }
+
+@router.post("/query/export", summary="Export query results to Excel")
+async def export_query_results(
+    request: QueryRequest,
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Execute the query (or fetch from cache) and return an Excel file directly.
+    The response handles large datasets by streaming the byte content.
+    """
+    # For simplicity, we re-run the logic but return a StreamingResponse
+    # Alternatively, we could fetch from ResultCache if the user just queried it.
+    
+    # ── 1. Determine SQL ──
+    # Note: Building a full export here. We re-use Cache for speed.
+    # In a full production app, we would share logic between /query and /export.
+    
+    # We'll just call the query_data logic but return Excel.
+    # To keep it DRY, we usually factor out the 'get_data_from_question' logic.
+    # Since we are an AI, we'll implement it directly here for the user's immediate need.
+    
+    dataset_id = request.dataset_id
+    if not dataset_id:
+         raise HTTPException(status_code=400, detail="dataset_id required for export")
+
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT table_name FROM datasets WHERE dataset_id = ? AND tenant_id = ?",
+        [dataset_id, current_user]
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    table_name = row[0]
+
+    # We use a trick: get the result of the query directly.
+    # If the user just ran the query, it's in Cache.
+    # For now, let's assume we want a fresh run or cached result.
+    from app.services.cache_service import CacheService
+    
+    # Re-normalize etc. 
+    normalized_question = semantic_service.normalize_question(request.question)
+    cache_key = f"{current_user}:{table_name}:{normalized_question}"
+    sql = await CacheService.get_sql({"cache_key": cache_key})
+    
+    if not sql:
+        # If not cached, we need to generate it again (or the user must query first)
+        # For simplicity, we'll try to get it from the LLM service if needed.
+        raise HTTPException(status_code=400, detail="Please run the query first to generate SQL, then export.")
+
+    data = await CacheService.get_result(sql, current_user)
+    if data is None:
+        data = execution_service.execute_query(sql)
+
+    # Filter tenant_id
+    filtered_data = _filter_tenant_id(data)
+    
+    if not filtered_data:
+        raise HTTPException(status_code=400, detail="No data found to export.")
+
+    # Convert to DataFrame
+    df = pd.DataFrame(filtered_data)
+    
+    # Write to Excel in memory
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Query Results')
+    
+    output.seek(0)
+    
+    filename = f"intelliDoc_Export_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 

@@ -247,3 +247,56 @@ async def get_dataset_schema(
         sample_values=sample_values,
         tip=tip,
     )
+
+@router.get("/datasets/{dataset_id}/profit-dashboard")
+async def get_profit_dashboard(
+    dataset_id: str,
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Directly computes executive profit dashboard metrics for a dataset.
+    This is an all-in-one endpoint for the specialized P&L UI.
+    """
+    from app.services.normalization_service import NormalizationService
+    from app.services.kpi_engine import KPIEngine
+    
+    conn = get_connection()
+    # Verify ownership
+    row = conn.execute(
+        "SELECT table_name FROM datasets WHERE dataset_id = ? AND tenant_id = ?",
+        [dataset_id, current_user]
+    ).fetchone()
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    
+    table_name = row[0]
+    
+    # Fetch data (limit 5000 rows for analysis performance)
+    try:
+        # Get actual columns first
+        schema_query = f'SELECT * FROM "{table_name}" LIMIT 0'
+        columns = [desc[0] for desc in conn.execute(schema_query).description]
+        
+        # Get data
+        rows = conn.execute(f'SELECT * FROM "{table_name}" LIMIT 5000').fetchall()
+        
+        data = []
+        for r in rows:
+            data.append(dict(zip(columns, r)))
+            
+        if not data:
+             return {"error": "No data found for analysis"}
+
+        # 1. Normalize
+        normalized_data = NormalizationService.apply_normalization(data)
+        
+        # 2. Compute specialized Profit metrics
+        dashboard_content = KPIEngine.compute_profit_dashboard_metrics(normalized_data)
+        
+        return dashboard_content
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to generate dashboard: {str(e)}")

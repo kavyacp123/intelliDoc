@@ -54,3 +54,28 @@ async def analyze_dataset(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+@router.post("/profit-analysis")
+async def profit_analysis(
+    request: DashboardRequest,
+    current_user: Any = Depends(get_current_user)
+):
+    """
+    Detailed financial analysis resulting in Gauges, P&L Statement, and specific sub-OPEX trends.
+    """
+    if not request.data:
+        raise HTTPException(status_code=400, detail="Dataset is empty")
+
+    try:
+        # 1. Normalize
+        normalized_data = NormalizationService.apply_normalization(request.data)
+        
+        # 2. Compute specialized Profit metrics
+        dashboard_content = KPIEngine.compute_profit_dashboard_metrics(normalized_data)
+        
+        return dashboard_content
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Profit analysis failed: {str(e)}")
