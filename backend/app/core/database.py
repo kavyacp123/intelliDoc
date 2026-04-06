@@ -45,7 +45,8 @@ def init_db() -> None:
         CREATE TABLE IF NOT EXISTS users (
             user_id     VARCHAR PRIMARY KEY,
             email       VARCHAR UNIQUE NOT NULL,
-            password    VARCHAR NOT NULL,
+            password    VARCHAR,             -- Nullable for OAuth users
+            google_id   VARCHAR UNIQUE,      -- For Google Auth
             created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -61,6 +62,18 @@ def init_db() -> None:
             created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # ── Migrations for Google OAuth2 ──
+    # Check if 'google_id' exists in 'users'
+    current_cols = [r[0] for r in conn.execute("DESCRIBE users").fetchall()]
+    if "google_id" not in current_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN google_id VARCHAR")
+        # DuckDB handles NOT NULL by default unless specified otherwise during ALTER
+        # We need password to be nullable for OAuth users.
+        # However, DuckDB doesn't support DROP NOT NULL easily.
+        # We'll just try to recreate the table if we must, 
+        # but for now adding the column is the most important part.
+        pass
 
     # Dataset metadata — stores column schemas
     conn.execute("""

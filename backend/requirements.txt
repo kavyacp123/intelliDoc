@@ -18,6 +18,7 @@ pydantic-settings
 python-jose[cryptography]
 passlib[bcrypt]
 bcrypt
+authlib
 
 # SQL parsing & validation
 sqlglot

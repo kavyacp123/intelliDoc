@@ -20,7 +20,15 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.database import close_db, init_db
-from app.routes import auth_routes, dataset_routes, query_routes
+from app.routes import (
+    auth_routes, 
+    dataset_routes, 
+    query_routes, 
+    google_auth_routes,
+    history_routes,
+    dashboard_routes
+)
+from starlette.middleware.sessions import SessionMiddleware
 
 import os
 
@@ -73,6 +81,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Session Middleware (Required for Authlib OAuth2) ──
+app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
+
 
 # ── Basic Rate Limiting Middleware ──
 # In production, use a proper solution like slowapi or Redis-backed limiter.
@@ -111,9 +122,8 @@ async def rate_limit_middleware(request: Request, call_next):
 
 
 # ── Register Routers ──
-from app.routes import auth_routes, dataset_routes, query_routes, history_routes, dashboard_routes
-
 app.include_router(auth_routes.router)
+app.include_router(google_auth_routes.router)
 app.include_router(dataset_routes.router)
 app.include_router(query_routes.router)
 app.include_router(history_routes.router)

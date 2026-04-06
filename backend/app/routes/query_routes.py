@@ -36,7 +36,6 @@ from app.services.intent_processor import enhance_intent
 from app.services.intent_validator import validate_intent, IntentValidationError
 from app.services.metric_resolver import resolve_metric
 from app.services.time_resolver import resolve_time
-from app.services.query_builder import build_query
 from app.services.table_router import route_query
 from app.services.logic_enforcer import enforce_logic
 

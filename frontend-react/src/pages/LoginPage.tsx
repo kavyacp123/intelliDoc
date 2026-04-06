@@ -96,6 +96,22 @@ const LoginPage: React.FC = () => {
                 <span>Sign In</span>
                 <span className="material-symbols-outlined text-[20px]">login</span>
               </Button>
+
+              <div className="relative flex items-center gap-4 py-2">
+                <div className="h-px w-full bg-outline-variant/20"></div>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant whitespace-nowrap">OR</span>
+                <div className="h-px w-full bg-outline-variant/20"></div>
+              </div>
+
+              <Button 
+                type="button" 
+                variant="secondary" 
+                className="w-full py-4 flex items-center justify-center gap-3 border border-outline-variant/30"
+                onClick={() => window.location.href = 'http://localhost:8000/auth/google'}
+              >
+                <img src="https://www.gstatic.com/images/branding/product/1x/gsuite_512dp.png" alt="Google" className="w-5 h-5" />
+                <span>Continue with Google</span>
+              </Button>
             </form>
 
             <div className="mt-8 pt-8 border-t border-outline-variant/15 text-center">
