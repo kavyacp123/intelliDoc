@@ -120,3 +120,40 @@ def get_all_schemas_for_tenant(tenant_id: str) -> List[TableMetadata]:
         )
 
     return schemas
+
+
+def get_sample_values(
+    dataset_id: str,
+    limit_per_column: int = 10,
+    max_columns: int = 8,
+) -> dict[str, list]:
+    """
+    Retrieve small sample value sets for categorical columns.
+
+    This powers interaction fallbacks such as "did you mean" suggestions for
+    likely entity values without exposing large raw datasets.
+    """
+    metadata = get_dataset_schema(dataset_id)
+    if metadata is None:
+        return {}
+
+    conn = get_connection()
+    sample_values: dict[str, list] = {}
+    categorical_types = {"varchar", "text", "string"}
+
+    for col in metadata.columns[:]:
+        if len(sample_values) >= max_columns:
+            break
+        if col.dtype.lower() not in categorical_types:
+            continue
+        try:
+            rows = conn.execute(
+                f'SELECT DISTINCT "{col.name}" FROM "{metadata.table_name}" WHERE "{col.name}" IS NOT NULL LIMIT {int(limit_per_column)}'
+            ).fetchall()
+            values = [r[0] for r in rows if isinstance(r[0], str) and r[0].strip()]
+            if values:
+                sample_values[col.name] = values
+        except Exception:
+            continue
+
+    return sample_values

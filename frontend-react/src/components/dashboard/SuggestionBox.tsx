@@ -5,12 +5,14 @@ interface SuggestionBoxProps {
   suggestions: string[];
   originalQuery: string;
   onPick: (query: string) => void;
+  message?: string;
 }
 
 export const SuggestionBox: React.FC<SuggestionBoxProps> = ({ 
   suggestions, 
   originalQuery, 
-  onPick 
+  onPick,
+  message
 }) => {
   return (
     <div className="flex gap-6 max-w-4xl mb-8">
@@ -21,7 +23,7 @@ export const SuggestionBox: React.FC<SuggestionBoxProps> = ({
       </div>
       <div className="flex-1">
         <div className="text-on-surface leading-relaxed text-sm font-body mb-3">
-          <span className="font-semibold text-secondary">I can help with that!</span> Did you mean one of these?
+          <span className="font-semibold text-secondary">I can help with that!</span> {message || 'Did you mean one of these?'}
         </div>
         <div className="flex flex-wrap gap-2 mb-3">
           {suggestions.map((s, i) => (

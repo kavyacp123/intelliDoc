@@ -22,6 +22,7 @@ authlib
 
 # SQL parsing & validation
 sqlglot
+rapidfuzz
 
 # Config
 pyyaml
@@ -38,3 +39,7 @@ groq
 redis
 celery
 
+# Vector RAG
+numpy
+sentence-transformers
+faiss-cpu

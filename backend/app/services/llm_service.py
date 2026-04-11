@@ -183,3 +183,82 @@ def _infer_chart_hint(question: str) -> str:
     if any(w in q for w in ["by ", "per ", "group"]):
         return "bar"
     return "number"
+
+
+def refine_query(
+    original_query: str,
+    clarification: str | dict,
+) -> str:
+    """
+    Combine an original query with a follow-up clarification into a more complete query.
+    Falls back to deterministic concatenation when the LLM is unavailable.
+    """
+    if isinstance(clarification, dict):
+        clarification_text = json.dumps(clarification)
+    else:
+        clarification_text = clarification
+
+    if not str(clarification_text).strip():
+        return original_query
+
+    if not settings.GROQ_API_KEY:
+        return _fallback_refine_query(original_query, clarification)
+
+    system_prompt = """You are a query refinement assistant for a data analytics system.
+
+Your job is to combine:
+1. The original user query
+2. The user's follow-up clarification
+
+into a complete, precise query that can be executed.
+
+Rules:
+- Resolve missing parts such as metric, entity, filters, and time range
+- Preserve the original business intent
+- Do not invent fields or unrelated details
+- Return only JSON with the shape: {"refined_query":"..."}"""
+
+    user_prompt = f"""Original Query:
+{original_query}
+
+User Clarification:
+{clarification_text}
+"""
+
+    client = Groq(api_key=settings.GROQ_API_KEY)
+    response = client.chat.completions.create(
+        model=settings.GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0,
+        response_format={"type": "json_object"},
+    )
+
+    json_str = response.choices[0].message.content.strip()
+    json_str = re.sub(r"^```[a-zA-Z]*\n?", "", json_str)
+    json_str = re.sub(r"\n?```$", "", json_str).strip()
+
+    try:
+        parsed = json.loads(json_str)
+        refined = str(parsed.get("refined_query", "")).strip()
+        return refined or _fallback_refine_query(original_query, clarification)
+    except Exception:
+        return _fallback_refine_query(original_query, clarification)
+
+
+def _fallback_refine_query(original_query: str, clarification: str | dict) -> str:
+    if isinstance(clarification, dict):
+        ordered_values = [str(value).strip() for key, value in clarification.items() if str(value).strip()]
+        clarification = " ".join(ordered_values)
+    clarification = clarification.strip()
+    original_query = original_query.strip()
+
+    if not clarification:
+        return original_query
+    if clarification.lower() in original_query.lower():
+        return original_query
+    if clarification.lower() in {"yes", "no"}:
+        return f"{original_query} {'over time' if clarification.lower() == 'yes' else ''}".strip()
+    return f"{clarification} {original_query}".strip()

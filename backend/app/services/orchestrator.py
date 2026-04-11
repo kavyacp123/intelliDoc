@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import logging
 from app.models.intent import MultiStepPlan, StepIntent
 from app.services.query_builder import build_query_for_step
@@ -8,7 +8,13 @@ logger = logging.getLogger(__name__)
 
 class Orchestrator:
     @staticmethod
-    def execute_plan(plan: MultiStepPlan, table_name: str, tenant_id: str) -> Dict[str, Any]:
+    def execute_plan(
+        plan: MultiStepPlan,
+        table_name: str,
+        tenant_id: str,
+        semantics: Optional[Dict[str, str]] = None,
+        actual_columns: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         """
         Executes a multi-step query plan sequentially.
         Passes results from dependent steps into filters of subsequent steps.
@@ -29,8 +35,7 @@ class Orchestrator:
             step.filters = resolved_filters
 
             # 2. Build SQL for step
-            # Note: We pass raw table_name here; ideally planner handles routing, but for multi-step V1 we use main table.
-            sql = build_query_for_step(step, table_name, tenant_id)
+            sql = build_query_for_step(step, table_name, tenant_id, semantics, actual_columns)
             all_sqls.append(sql)
 
             # 3. Execute
@@ -40,11 +45,8 @@ class Orchestrator:
             # 4. Save output for next steps if there is an output key
             if step.output and data:
                 # Store the primary key/dimension value returned
-                # e.g. if we ranked top party, grab the first column of the first row
                 first_row = data[0]
-                # Assuming the dimension requested is the key
                 dim_key = step.dimensions[0] if step.dimensions else list(first_row.keys())[0]
-                # For safety, if dim_key exists, grab it, else first val
                 extracted_val = first_row.get(dim_key, list(first_row.values())[0])
                 
                 execution_context[step.output] = extracted_val

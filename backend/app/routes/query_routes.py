@@ -40,6 +40,10 @@ from app.services.metric_resolver import resolve_metric
 from app.services.time_resolver import resolve_time
 from app.services.table_router import route_query
 from app.services.logic_enforcer import enforce_logic
+from app.services.confidence_service import score_plan_confidence
+from app.services import rag_service
+from app.services.interaction_controller import build_interaction_response
+from app.services.session_service import session_service
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +69,9 @@ async def query_data(
     request: QueryRequest,
     current_user: str = Depends(get_current_user),
 ):
+    feedback_info = None
+    active_session_id = request.session_id
+
     # ── 1. Resolve dataset ──
     table_name = None
     row_count = 0
@@ -97,6 +104,72 @@ async def query_data(
 
     if not table_name:
         table_name = schemas[0].table_name
+
+    if request.clarification_feedback:
+        feedback = request.clarification_feedback
+        pending = session_service.get_pending_interaction(
+            session_id=feedback.get("session_id") or request.session_id,
+            tenant_id=current_user,
+        )
+        if pending:
+            active_session_id = feedback.get("session_id") or request.session_id
+            answer_key = feedback.get("answer_key") or request.answer_key
+            answer_value = feedback.get("answer_value") or feedback.get("selected_option", "") or request.answer_value
+
+            if answer_key:
+                session_service.add_answer(active_session_id, current_user, answer_key, answer_value)
+                pending = session_service.get_pending_interaction(active_session_id, current_user) or pending
+                if not session_service.is_complete(active_session_id, current_user):
+                    waiting_payload = dict(pending.get("context", {}).get("interaction_payload") or {})
+                    waiting_payload["answers"] = pending.get("answers", {})
+                    return QueryResponse(
+                        data=[],
+                        sql="",
+                        chart_hint=None,
+                        row_count=0,
+                        warnings=[],
+                        execution_plan={
+                            "strategy": "clarification_waiting",
+                            "execution_mode": "sync",
+                            "estimated_cost": 0,
+                        },
+                        explanation={"optimization": "Waiting for the remaining clarification answers before execution."},
+                        insights=None,
+                        needs_clarification=True,
+                        clarification_question=waiting_payload.get("message"),
+                        clarification_options=[],
+                        clarification_terms=pending.get("context", {}).get("clarification_terms", []),
+                        failure_type=pending.get("failure_type"),
+                        interaction_type="clarification_chat",
+                        interaction_payload=waiting_payload,
+                        session_id=active_session_id,
+                    )
+
+                request.question = llm_service.refine_query(
+                    original_query=pending.get("original_query", request.question),
+                    clarification=pending.get("answers", {}),
+                )
+            else:
+                request.question = llm_service.refine_query(
+                    original_query=pending.get("original_query", request.question),
+                    clarification=feedback.get("selected_option", ""),
+                )
+            session_service.clear_pending_interaction(active_session_id, current_user)
+
+        schema_preview = {
+            "metrics": [c.name for c in schemas[0].columns if c.dtype.lower() in ("int", "float", "double", "bigint", "integer")],
+            "dimensions": [c.name for c in schemas[0].columns if c.dtype.lower() in ("string", "varchar", "text")],
+            "time_dimensions": [c.name for c in schemas[0].columns if c.dtype.lower() in ("datetime", "date", "timestamp")],
+            "semantic_metrics": [],
+        }
+        feedback_info = rag_service.learn_from_clarification(
+            selected_option=feedback.get("selected_option", ""),
+            ambiguous_terms=feedback.get("ambiguous_terms", []),
+            schema=schema_preview,
+            tenant_id=current_user,
+            dataset_id=dataset_id,
+        )
+        request.question = request.question or feedback.get("original_query", request.question)
 
     # ── 3. Synonym Normalization ──
     normalized_question = semantic_service.normalize_question(request.question)
@@ -139,6 +212,7 @@ async def query_data(
 
             # ── 5.5 Create MultiStepPlan ──
             plan_obj = MultiStepPlan(**intent_json)
+            original_plan = plan_obj.model_copy(deep=True)
             
             # Construct a schema mapping for the Resolvers and Hybrid Engine
             schema_dict = {
@@ -146,6 +220,7 @@ async def query_data(
                 "metrics": [c.name for c in schemas[0].columns if c.dtype.lower() in ("int", "float", "double", "bigint", "integer")],
                 "dimensions": [c.name for c in schemas[0].columns if c.dtype.lower() in ("string", "varchar", "text")],
                 "time_dimensions": [c.name for c in schemas[0].columns if c.dtype.lower() in ("datetime", "date", "timestamp")],
+                "semantic_metrics": list(semantics.keys()) if semantics else [],
             }
             
             # ── 6. Intent Processor (Hybrid Rules) ──
@@ -154,6 +229,81 @@ async def query_data(
             # ── 7. Resolvers ──
             resolve_metric(plan_obj, schema_dict)
             resolve_time(plan_obj, schema_dict)
+
+            rag_matches = rag_service.retrieve_business_context(
+                question=normalized_question,
+                tenant_id=current_user,
+                dataset_id=dataset_id,
+            )
+            rag_resolution = rag_service.apply_business_context(
+                plan=plan_obj,
+                question=normalized_question,
+                schema=schema_dict,
+                matches=rag_matches,
+            )
+
+            confidence_result = score_plan_confidence(
+                question=normalized_question,
+                original_plan=original_plan,
+                resolved_plan=plan_obj,
+                schema=schema_dict,
+                semantics=semantics,
+                rag_resolved_terms=rag_resolution["resolved_terms"],
+                rag_term_results=rag_resolution["term_results"],
+            )
+
+            if confidence_result["needs_clarification"]:
+                sample_values = schema_service.get_sample_values(dataset_id) if dataset_id else {}
+                interaction = build_interaction_response(
+                    question=normalized_question,
+                    original_plan=original_plan,
+                    resolved_plan=plan_obj,
+                    schema=schema_dict,
+                    confidence_result=confidence_result,
+                    sample_values=sample_values,
+                )
+                active_session_id = session_service.create_or_update_pending_interaction(
+                    session_id=active_session_id,
+                    tenant_id=current_user,
+                    dataset_id=dataset_id,
+                    interaction={
+                        "original_query": normalized_question,
+                        "failure_type": interaction["failure_type"],
+                        "interaction_type": interaction.get("interaction_type"),
+                        "questions": interaction.get("payload", {}).get("questions", []),
+                        "expected_fields": interaction.get("payload", {}).get("expected_fields", []),
+                        "context": {
+                            "clarification_terms": confidence_result["clarification_terms"],
+                            "interaction_payload": interaction.get("payload"),
+                        },
+                    },
+                )
+                return QueryResponse(
+                    data=[],
+                    sql="",
+                    chart_hint=None,
+                    row_count=0,
+                    warnings=[issue["description"] for issue in confidence_result["issues"]],
+                    execution_plan={
+                        "strategy": "clarification",
+                        "execution_mode": "sync",
+                        "estimated_cost": 0,
+                    },
+                    explanation={
+                        "optimization": "Clarification requested before execution to avoid a weak or ambiguous answer."
+                    },
+                    insights=None,
+                    confidence_score=confidence_result["confidence"],
+                    confidence_issues=confidence_result["issues"],
+                    needs_clarification=True,
+                    clarification_question=interaction["question"],
+                    clarification_options=interaction["options"],
+                    clarification_terms=confidence_result["clarification_terms"],
+                    failure_type=interaction["failure_type"],
+                    interaction_type=interaction.get("interaction_type"),
+                    interaction_payload=interaction.get("payload"),
+                    session_id=active_session_id,
+                )
             
             # ── 8. Intent Validator ──
             allowed_columns_for_intent = set(allowed_columns)
@@ -181,7 +331,8 @@ async def query_data(
 
             from app.services.orchestrator import Orchestrator
             # Orchestrator handles all steps and execution dynamically
-            result = Orchestrator.execute_plan(plan_obj, table_name, current_user)
+            actual_cols = [c.name for c in schemas[0].columns] if schemas else []
+            result = Orchestrator.execute_plan(plan_obj, table_name, current_user, semantics, actual_cols)
             data = _filter_tenant_id(result["data"])
             sql = result["sqls"][-1] if result["sqls"] else "SELECT 1"
             safe_sql = sql
@@ -205,9 +356,13 @@ async def query_data(
                 sql=safe_sql,
                 chart_hint=chart_hint,
                 row_count=len(data),
+                warnings=_merge_warnings(rag_resolution["applied_rules"], feedback_info),
                 execution_plan=execution_plan,
                 explanation=explanation,
-                insights=insights_res
+                insights=insights_res,
+                confidence_score=confidence_result["confidence"],
+                confidence_issues=confidence_result["issues"],
+                session_id=active_session_id,
             )
             
         except Exception as e:
@@ -260,7 +415,9 @@ async def query_data(
             row_count=len(cached_result),
             execution_plan={"strategy": "cache", "execution_mode": "sync", "estimated_cost": 0},
             explanation={"optimization": "Instant read from query cache mapping"},
-            insights=None
+            insights=None,
+            confidence_score=1.0,
+            session_id=active_session_id,
         )
 
     # ── Async Routing for Heavy Queries ──
@@ -307,8 +464,19 @@ async def query_data(
         row_count=len(data),
         execution_plan=execution_plan,
         explanation=explanation,
-        insights=None
+        insights=None,
+        confidence_score=1.0,
+        session_id=active_session_id,
     )
+
+
+def _merge_warnings(rag_warnings: List[str], feedback_info: Optional[Dict[str, Any]]) -> List[str]:
+    warnings = list(rag_warnings)
+    if feedback_info and feedback_info.get("stored"):
+        warnings.append(
+            f"Learned '{feedback_info['term']}' as '{feedback_info['meaning']}' from your clarification."
+        )
+    return warnings
 
 
 @router.post(
@@ -498,4 +666,3 @@ async def export_query_results(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
-

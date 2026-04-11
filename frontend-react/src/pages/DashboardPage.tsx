@@ -17,6 +17,12 @@ interface Message {
   suggestions?: string[];
   originalQuery?: string;
   insights?: any;
+  clarificationQuestion?: string;
+  confidenceScore?: number;
+  clarificationTerms?: string[];
+  interactionType?: string;
+  interactionPayload?: any;
+  sessionId?: string;
 }
 
 const DashboardPage: React.FC = () => {
@@ -182,8 +188,18 @@ const DashboardPage: React.FC = () => {
     }).catch(err => console.error('Failed to save message', err));
   };
 
-  const handleSend = async (overrideQuery?: string) => {
-    const text = overrideQuery || query.trim();
+  const handleSend = async (
+    overrideQuery?: string,
+    clarificationFeedback?: {
+      originalQuery: string;
+      selectedOption: string;
+      ambiguousTerms: string[];
+      sessionId?: string;
+      answerKey?: string;
+      answerValue?: string;
+    }
+  ) => {
+    const text = clarificationFeedback?.selectedOption || overrideQuery || query.trim();
     if (!text || !activeDatasetId) return;
 
     if (!overrideQuery) setQuery('');
@@ -217,7 +233,7 @@ const DashboardPage: React.FC = () => {
       }
 
       // 3. Execute Query
-      await executeQuery(activeDatasetId, text);
+      await executeQuery(activeDatasetId, text, clarificationFeedback);
     } catch (err) {
       addMessage(activeDatasetId, { 
         id: 'err-' + Date.now(), 
@@ -229,12 +245,37 @@ const DashboardPage: React.FC = () => {
     }
   };
 
-  const executeQuery = async (datasetId: string, text: string) => {
+  const executeQuery = async (
+    datasetId: string,
+    text: string,
+    clarificationFeedback?: {
+      originalQuery: string;
+      selectedOption: string;
+      ambiguousTerms: string[];
+      sessionId?: string;
+      answerKey?: string;
+      answerValue?: string;
+    }
+  ) => {
     try {
       const res = await fetch('http://localhost:8000/query', {
         method: 'POST',
         headers: { ...authHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: text, dataset_id: datasetId })
+        body: JSON.stringify({
+          question: clarificationFeedback?.originalQuery || text,
+          dataset_id: datasetId,
+          session_id: clarificationFeedback?.sessionId,
+          answer_key: clarificationFeedback?.answerKey,
+          answer_value: clarificationFeedback?.answerValue,
+          clarification_feedback: clarificationFeedback ? {
+            original_query: clarificationFeedback.originalQuery,
+            selected_option: clarificationFeedback.selectedOption,
+            ambiguous_terms: clarificationFeedback.ambiguousTerms,
+            session_id: clarificationFeedback.sessionId,
+            answer_key: clarificationFeedback.answerKey,
+            answer_value: clarificationFeedback.answerValue
+          } : undefined
+        })
       });
 
       const data = await res.json();
@@ -248,13 +289,33 @@ const DashboardPage: React.FC = () => {
             return;
         }
 
+        if (data.needs_clarification) {
+          addMessage(datasetId, {
+            id: 'clarify-' + Date.now(),
+            type: 'suggestions',
+            suggestions: data.clarification_options || [],
+            originalQuery: text,
+            content: data.clarification_question || 'I need a bit more detail before I run that.',
+            clarificationQuestion: data.clarification_question,
+            confidenceScore: data.confidence_score,
+            clarificationTerms: data.clarification_terms || [],
+            interactionType: data.interaction_type,
+            interactionPayload: data.interaction_payload,
+            sessionId: data.session_id
+          });
+          return;
+        }
+
         addMessage(datasetId, {
           id: 'ans-' + Date.now(),
           type: 'assistant',
           data: data.data,
           sql: data.sql,
           rowCount: data.row_count,
-          insights: data.insights
+          insights: data.insights,
+          originalQuery: text,
+          confidenceScore: data.confidence_score,
+          sessionId: data.session_id
         });
       } else {
         addMessage(datasetId, {
@@ -368,11 +429,92 @@ const DashboardPage: React.FC = () => {
                       </div>
                     </div>
                   ) : msg.type === 'suggestions' ? (
-                    <SuggestionBox 
-                      suggestions={msg.suggestions || []} 
-                      originalQuery={msg.originalQuery || ''} 
-                      onPick={(q) => handleSend(q)}
-                    />
+                    <div>
+                      {msg.interactionType === 'clarification_chat' && msg.interactionPayload ? (
+                        <div className="flex gap-6 max-w-4xl mb-4 animate-in slide-in-from-left-4 fade-in">
+                          <div className="w-8 h-8 mt-1 shrink-0">
+                            <span className="material-symbols-outlined text-secondary font-fill" style={{ fontVariationSettings: "'FILL' 1" }}>
+                              forum
+                            </span>
+                          </div>
+                          <div className="bg-amber-50 text-amber-900 px-5 py-4 rounded-2xl border border-amber-100 shadow-sm w-full">
+                            <p className="text-sm font-medium mb-3">{msg.interactionPayload.message || msg.clarificationQuestion}</p>
+                            <div className="space-y-3">
+                              {(msg.interactionPayload.questions || []).map((q: any, idx: number) => (
+                                <div key={idx}>
+                                  <p className="text-xs font-semibold mb-2 opacity-80">{q.question}</p>
+                                  {msg.interactionPayload.answers?.[q.key] && (
+                                    <p className="text-[11px] mb-2 text-emerald-700">
+                                      Answered: {msg.interactionPayload.answers[q.key]}
+                                    </p>
+                                  )}
+                                  <div className="flex flex-wrap gap-2">
+                                    {(q.options || []).filter(Boolean).map((opt: string, optIdx: number) => (
+                                      <button
+                                        key={optIdx}
+                                        onClick={() => handleSend(
+                                          opt,
+                                          msg.clarificationTerms && msg.clarificationTerms.length > 0
+                                            ? {
+                                                originalQuery: msg.originalQuery || '',
+                                                selectedOption: opt,
+                                                ambiguousTerms: msg.clarificationTerms,
+                                                sessionId: msg.sessionId,
+                                                answerKey: q.key,
+                                                answerValue: opt
+                                              }
+                                            : undefined
+                                        )}
+                                        className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-white border border-secondary/20 text-secondary rounded-xl text-xs font-semibold shadow-sm hover:bg-secondary hover:text-white transition-all duration-200 active:scale-95"
+                                        disabled={Boolean(msg.interactionPayload.answers?.[q.key])}
+                                      >
+                                        {opt}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            {typeof msg.confidenceScore === 'number' && (
+                              <p className="text-xs mt-3 opacity-70">Confidence: {Math.round(msg.confidenceScore * 100)}%</p>
+                            )}
+                          </div>
+                        </div>
+                      ) : msg.clarificationQuestion && (
+                        <div className="flex gap-6 max-w-4xl mb-4 animate-in slide-in-from-left-4 fade-in">
+                          <div className="w-8 h-8 mt-1 shrink-0">
+                            <span className="material-symbols-outlined text-secondary font-fill" style={{ fontVariationSettings: "'FILL' 1" }}>
+                              help
+                            </span>
+                          </div>
+                          <div className="bg-amber-50 text-amber-900 px-5 py-4 rounded-2xl border border-amber-100 shadow-sm">
+                            <p className="text-sm font-medium">{msg.clarificationQuestion}</p>
+                            {typeof msg.confidenceScore === 'number' && (
+                              <p className="text-xs mt-1 opacity-70">Confidence: {Math.round(msg.confidenceScore * 100)}%</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {msg.interactionType !== 'clarification_chat' && (
+                        <SuggestionBox 
+                          suggestions={msg.suggestions || []} 
+                          originalQuery={msg.originalQuery || ''} 
+                          message={msg.interactionPayload?.message || msg.clarificationQuestion || undefined}
+                          onPick={(q) => handleSend(
+                            q,
+                            msg.clarificationTerms && msg.clarificationTerms.length > 0
+                              ? {
+                                  originalQuery: msg.originalQuery || '',
+                                  selectedOption: q,
+                                  ambiguousTerms: msg.clarificationTerms,
+                                  sessionId: msg.sessionId,
+                                  answerValue: q
+                                }
+                              : undefined
+                          )}
+                        />
+                      )}
+                    </div>
                   ) : (
                     <div className="flex gap-6 max-w-4xl mb-8 animate-in slide-in-from-left-4 fade-in">
                       <div className="w-8 h-8 mt-1 shrink-0">

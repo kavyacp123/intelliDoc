@@ -12,6 +12,10 @@ class QueryRequest(BaseModel):
 
     question: str
     dataset_id: Optional[str] = None  # optional: target a specific dataset
+    session_id: Optional[str] = None  # session ID for multi-turn clarification flows
+    clarification_feedback: Optional[Dict[str, Any]] = None
+    answer_key: Optional[str] = None
+    answer_value: Optional[str] = None
 
 
 class StructuredIntent(BaseModel):
@@ -76,6 +80,16 @@ class QueryResponse(BaseModel):
     execution_plan: Optional[Dict[str, Any]] = None
     explanation: Optional[Dict[str, Any]] = None
     insights: Optional[DashboardResponse] = None
+    confidence_score: Optional[float] = None
+    confidence_issues: List[Dict[str, str]] = []
+    needs_clarification: bool = False
+    clarification_question: Optional[str] = None
+    clarification_options: List[str] = []
+    clarification_terms: List[str] = []
+    failure_type: Optional[str] = None
+    interaction_type: Optional[str] = None
+    interaction_payload: Optional[Dict[str, Any]] = None
+    session_id: Optional[str] = None
 
 
 class AsyncJobResponse(BaseModel):

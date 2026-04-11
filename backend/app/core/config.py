@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str | None = None
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
+    # ── Vector RAG ──
+    RAG_BACKEND: str = "keyword"  # keyword | vector
+    VECTOR_SHADOW_MODE: bool = False
+    EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
+    VECTOR_INDEX_PATH: str = "./data/business_knowledge.faiss"
+
 
 # Singleton instance used across the application
 settings = Settings()

@@ -265,11 +265,12 @@ def format_semantics_for_prompt(semantics: Dict[str, str]) -> str:
 
 # Hardcoded fallback metrics (used by query_builder_service)
 _STATIC_METRICS: Dict[str, str] = {
-    "revenue":  "SUM(revenue)",
-    "profit":   "SUM(revenue - expense)",
-    "sales":    "SUM(revenue)",
-    "expense":  "SUM(expense)",
-    "quantity": "SUM(quantity)",
+    "revenue":     "SUM(revenue)",
+    "profit":      "SUM(revenue - expense)",
+    "sales":       "SUM(revenue)",
+    "expense":     "SUM(expense)",
+    "quantity":    "SUM(quantity)",
+    "order_count": "COUNT(*)",
 }
 
 # Hardcoded fallback dimensions (used by query_builder_service)

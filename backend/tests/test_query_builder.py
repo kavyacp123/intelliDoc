@@ -20,11 +20,12 @@ from app.services.query_builder_service import build_query
 
 @pytest.fixture(autouse=True)
 def load_semantic_config():
-    """Ensure the semantic config is loaded before each test."""
-    config_path = Path(__file__).resolve().parents[1] / "semantic_config.yaml"
-    semantic_service.reload_config(config_path)
+    """Ensure the semantic config is loaded before each test.
+
+    The semantic service now uses static dictionaries instead of a YAML
+    config file, so no reload is necessary.
+    """
     yield
-    semantic_service.reload_config(config_path)
 
 
 class TestBuildQuery:

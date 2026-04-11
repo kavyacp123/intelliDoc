@@ -20,7 +20,9 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.database import close_db, init_db
+from app.services.rag_service import initialize_vector_store
 from app.routes import (
+    admin_routes,
     auth_routes, 
     dataset_routes, 
     query_routes, 
@@ -55,6 +57,10 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Secure AI Analytics Platform")
     init_db()
     logger.info("✅ Database initialized")
+    try:
+        initialize_vector_store()
+    except Exception as e:
+        logger.warning("Vector store initialization skipped: %s", e)
     yield
     close_db()
     logger.info("🛑 Database connection closed")
@@ -75,7 +81,14 @@ app = FastAPI(
 # ── CORS Middleware ──
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",   # Vite React dev server
+        "http://localhost:5174",   # Vite fallback port
+        "http://localhost:3000",   # Legacy frontend / alt port
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -128,6 +141,7 @@ app.include_router(dataset_routes.router)
 app.include_router(query_routes.router)
 app.include_router(history_routes.router)
 app.include_router(dashboard_routes.router)
+app.include_router(admin_routes.router)
 
 
 # ── Health Check ──

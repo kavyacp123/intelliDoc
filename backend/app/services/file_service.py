@@ -17,7 +17,8 @@ import pandas as pd
 
 from app.core.database import get_connection
 from app.models.metadata import ColumnMeta, TableMetadata
-from app.utils.parser_utils import infer_column_types, clean_dataframe
+from app.utils.parser_utils import infer_column_types
+from app.services.data_structuring_engine import structure_dataframe
 from app.services.aggregation_service import run_pre_aggregations
 
 
@@ -55,8 +56,8 @@ def process_upload(
     if df.empty:
         raise ValueError("Uploaded file contains no data")
 
-    # ── Step 2: Clean and Normalize DataFrame ──
-    df = clean_dataframe(df)
+    # ── Step 2: Clean, Structure, and Normalize DataFrame ──
+    df = structure_dataframe(df)
     
     # ── Step 2.5: Auto-cast datetime columns to avoid DuckDB VARCHAR errors ──
     for col in df.columns:

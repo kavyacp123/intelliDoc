@@ -103,6 +103,52 @@ def init_db() -> None:
         )
     """)
 
+    # Business knowledge — lightweight RAG source for business definitions.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS business_knowledge (
+            id          VARCHAR PRIMARY KEY,
+            tenant_id   VARCHAR,
+            dataset_id  VARCHAR,
+            term        VARCHAR NOT NULL,
+            knowledge_type VARCHAR NOT NULL,
+            meaning     VARCHAR NOT NULL,
+            confidence  DOUBLE DEFAULT 0.0,
+            source      VARCHAR DEFAULT 'system',
+            usage_count INTEGER DEFAULT 0,
+            embedding   BLOB,
+            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Lightweight migrations for older installs.
+    for ddl in [
+        "ALTER TABLE business_knowledge ADD COLUMN source VARCHAR DEFAULT 'system'",
+        "ALTER TABLE business_knowledge ADD COLUMN usage_count INTEGER DEFAULT 0",
+        "ALTER TABLE business_knowledge ADD COLUMN embedding BLOB",
+    ]:
+        try:
+            conn.execute(ddl)
+        except Exception:
+            pass
+
+    # Retrieval evaluation logs — compares keyword and vector behavior in shadow mode.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS rag_resolution_logs (
+            id              VARCHAR PRIMARY KEY,
+            tenant_id       VARCHAR,
+            dataset_id      VARCHAR,
+            query_text      VARCHAR NOT NULL,
+            keyword_backend VARCHAR NOT NULL,
+            vector_backend  VARCHAR NOT NULL,
+            keyword_terms   VARCHAR,
+            vector_terms    VARCHAR,
+            agreement       BOOLEAN DEFAULT FALSE,
+            keyword_count   INTEGER DEFAULT 0,
+            vector_count    INTEGER DEFAULT 0,
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
 
 def close_db() -> None:
     """Close the database connection (called on shutdown)."""
