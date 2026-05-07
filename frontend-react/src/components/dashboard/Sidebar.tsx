@@ -92,6 +92,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <h3 className="text-[10px] font-bold tracking-[0.1em] uppercase text-on-surface-variant mb-3 px-3">Advanced Tools</h3>
           <div className="space-y-1">
             <Link
+              to="/sales-register-dashboard"
+              className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${
+                location.pathname === '/sales-register-dashboard'
+                  ? 'bg-white shadow-sm border-l-2 border-amber-600 text-slate-900 font-semibold'
+                  : 'hover:bg-slate-200/50 text-on-surface-variant/70 border-l-2 border-transparent'
+              }`}
+            >
+              <span className={`material-symbols-outlined text-lg ${location.pathname === '/sales-register-dashboard' ? 'text-amber-600' : ''}`}>
+                finance_mode
+              </span>
+              <div className="flex-1 truncate text-xs text-left">Sales Register</div>
+            </Link>
+            <Link
               to="/profit-engine"
               className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${
                 location.pathname === '/profit-engine'

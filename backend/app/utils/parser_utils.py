@@ -51,8 +51,14 @@ def _find_header_row(df: pd.DataFrame, max_rows: int = 20) -> int:
     best_row_idx = 0
     max_density = -1
     
-    # Also check the columns themselves (row -1)
-    col_density = sum(1 for c in df.columns if not str(c).startswith("Unnamed:") and pd.notna(c))
+    # Also check the columns themselves (row -1), but only if they already
+    # look like real string headers. Default integer column labels from pandas
+    # should not win over an actual header row inside the sheet.
+    col_density = sum(
+        1
+        for c in df.columns
+        if isinstance(c, str) and not str(c).startswith("Unnamed:") and pd.notna(c) and str(c).strip()
+    )
     if col_density > 0:
         max_density = col_density / len(df.columns)
         best_row_idx = -1 # Indicates the current df.columns are the actual headers

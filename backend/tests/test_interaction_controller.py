@@ -7,6 +7,7 @@ from app.models.intent import FinalOutput, MultiStepPlan, StepIntent
 from app.services.interaction_controller import (
     build_interaction_response,
     classify_failure_type,
+    resolve_from_history,
     suggest_entity,
 )
 
@@ -68,3 +69,17 @@ def test_build_interaction_response_for_partial_intent():
 
     assert response["failure_type"] == "partial_intent"
     assert response["options"]
+    assert response["interaction_type"] == "multi_slot_clarification"
+
+
+def test_resolve_from_history_applies_previous_metric():
+    plan = _make_plan(metric=None)
+    result = resolve_from_history(
+        question="show performance",
+        plan=plan,
+        schema={"metrics": ["revenue", "profit"], "semantic_metrics": [], "dimensions": ["party"]},
+        session_context={"last_metric": "revenue", "resolved_terms": {}},
+    )
+
+    assert plan.steps[0].metric == "revenue"
+    assert result["resolved_terms"]["last_metric"] == "revenue"

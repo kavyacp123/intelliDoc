@@ -27,6 +27,7 @@ def score_plan_confidence(
     semantics: Dict[str, str] | None = None,
     rag_resolved_terms: Dict[str, str] | None = None,
     rag_term_results: List[Dict[str, object]] | None = None,
+    session_context: Dict[str, object] | None = None,
 ) -> Dict[str, object]:
     """
     Score whether the current plan is safe to execute or should ask for clarification.
@@ -38,6 +39,7 @@ def score_plan_confidence(
     semantics = semantics or {}
     rag_resolved_terms = rag_resolved_terms or {}
     rag_term_results = rag_term_results or []
+    session_context = session_context or {}
     q = question.lower()
     issues: List[Dict[str, str]] = []
     score = 0.95
@@ -48,6 +50,11 @@ def score_plan_confidence(
     has_ambiguous_term = any(term in q for term in AMBIGUOUS_TERMS)
     resolved_terms = _find_resolved_terms(q, semantics)
     resolved_terms.update(rag_resolved_terms)
+    session_resolved_terms = session_context.get("resolved_terms", {}) or {}
+    for term, resolution in session_resolved_terms.items():
+        if term.lower() in q:
+            resolved_terms[term] = resolution
+            score += 0.15
 
     rag_option_map = {
         str(term_result["term"]): [_humanize_option(str(match["meaning"])) for match in term_result.get("matches", [])]
@@ -169,6 +176,17 @@ def score_plan_confidence(
         clarification_question = None
         options = []
 
+    slot_scores = _build_slot_scores(original_plan, resolved_plan, metrics=sorted(metric_names), dimensions=sorted(dimension_names))
+    missing_slots = _infer_missing_slots(
+        question=question,
+        issues=issues,
+        metrics=sorted(metric_names),
+        dimensions=sorted(dimension_names),
+        time_dimensions=sorted(schema.get("time_dimensions", [])),
+        rag_option_map=rag_option_map,
+    )
+    interpretation = _describe_interpretation(resolved_plan)
+
     return {
         "confidence": round(score, 2),
         "issues": issues,
@@ -177,6 +195,10 @@ def score_plan_confidence(
         "clarification_options": options,
         "clarification_terms": _detect_ambiguous_terms(question),
         "resolved_terms": resolved_terms,
+        "slot_scores": slot_scores,
+        "missing_slots": missing_slots,
+        "execution_strategy": "attempt_with_best_guess" if needs_clarification else "direct_answer",
+        "interpretation": interpretation,
     }
 
 
@@ -282,3 +304,78 @@ def _humanize_option(value: str) -> str:
 
 def _dedupe(values: List[str]) -> List[str]:
     return list(dict.fromkeys(values))
+
+
+def _build_slot_scores(
+    original_plan: MultiStepPlan,
+    resolved_plan: MultiStepPlan,
+    metrics: List[str],
+    dimensions: List[str],
+) -> Dict[str, float]:
+    original_step = original_plan.steps[0] if original_plan.steps else None
+    resolved_step = resolved_plan.steps[0] if resolved_plan.steps else None
+    metric_score = 0.95 if original_step and original_step.metric else 0.62 if resolved_step and resolved_step.metric else 0.25
+    dimension_score = 0.95 if original_step and original_step.dimensions else 0.70 if resolved_step and resolved_step.dimensions else 0.40
+    timeframe_score = 0.90 if any(dim in {"month", "year", "quarter", "week", "day"} for dim in dimensions) else 0.55
+    return {
+        "metric": round(metric_score, 2),
+        "dimension": round(dimension_score, 2),
+        "timeframe": round(timeframe_score, 2),
+    }
+
+
+def _infer_missing_slots(
+    question: str,
+    issues: List[Dict[str, str]],
+    metrics: List[str],
+    dimensions: List[str],
+    time_dimensions: List[str],
+    rag_option_map: Dict[str, List[str]],
+) -> List[Dict[str, object]]:
+    slots: List[Dict[str, object]] = []
+    issue_types = {issue["type"] for issue in issues}
+    q = question.lower()
+
+    for term, options in rag_option_map.items():
+        if term in q and options:
+            slots.append({"key": term, "question": f"How should '{term}' be defined?", "options": options[:3]})
+
+    if "missing_metric" in issue_types or "weak_mapping" in issue_types or any(term in q for term in ["best", "top", "highest", "lowest", "least"]):
+        metric_options = _metric_options(metrics)
+        if metric_options:
+            slots.append({"key": "metric", "question": "Which metric should I use?", "options": metric_options})
+
+    if time_dimensions and any(token in q for token in ["trend", "over time", "month", "year", "daily", "weekly"]) is False and "missing_structure" in issue_types:
+        slots.append({
+            "key": "timeframe",
+            "question": "What time period should I use?",
+            "options": ["Last 30 days", "Last quarter", "This year", "All time"],
+        })
+
+    if not slots and dimensions and "missing_structure" in issue_types:
+        slots.append({
+            "key": "dimension",
+            "question": "Which field should I break this down by?",
+            "options": [_humanize_metric(dim) for dim in dimensions[:3]],
+        })
+
+    deduped: List[Dict[str, object]] = []
+    seen = set()
+    for slot in slots:
+        key = slot.get("key")
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(slot)
+    return deduped
+
+
+def _describe_interpretation(plan: MultiStepPlan) -> str:
+    if not plan.steps:
+        return "I could not form a reliable interpretation of the question."
+    parts = []
+    for step in plan.steps:
+        metric = step.metric or "count"
+        dims = ", ".join(step.dimensions) if step.dimensions else "overall"
+        parts.append(f"{step.intent_type} using {metric} by {dims}")
+    return "I interpreted your request as: " + " then ".join(parts) + "."

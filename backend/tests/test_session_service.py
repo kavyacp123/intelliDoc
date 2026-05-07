@@ -31,3 +31,20 @@ def test_pending_interaction_round_trip():
 
     service.clear_pending_interaction(session_id, "user1")
     assert service.get_pending_interaction(session_id, "user1") is None
+
+
+def test_session_context_round_trip():
+    service = SessionService()
+    session_id = service.merge_session_context(
+        None,
+        "user1",
+        dataset_id="ds1",
+        resolved_terms={"best": "revenue"},
+        last_metric="revenue",
+        last_dimensions=["party"],
+    )
+
+    context = service.get_session_context(session_id, "user1")
+    assert context["resolved_terms"]["best"] == "revenue"
+    assert context["last_metric"] == "revenue"
+    assert context["last_dimensions"] == ["party"]

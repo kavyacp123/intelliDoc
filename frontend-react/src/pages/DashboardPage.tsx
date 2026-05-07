@@ -23,6 +23,9 @@ interface Message {
   interactionType?: string;
   interactionPayload?: any;
   sessionId?: string;
+  interpretation?: string;
+  correctionPrompt?: string;
+  assumedDefaults?: string[];
 }
 
 const DashboardPage: React.FC = () => {
@@ -37,6 +40,14 @@ const DashboardPage: React.FC = () => {
   const chatHistoryRef = useRef<HTMLDivElement>(null);
 
   const activeMessages = activeDatasetId ? chatHistories[activeDatasetId] || [] : [];
+
+  const getCurrentSessionId = () => {
+    const messages = activeDatasetId ? chatHistories[activeDatasetId] || [] : [];
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i].sessionId) return messages[i].sessionId;
+    }
+    return undefined;
+  };
 
   const authHeaders = {
     'Authorization': `Bearer ${token}`
@@ -209,30 +220,7 @@ const DashboardPage: React.FC = () => {
     setIsThinking(true);
 
     try {
-      // 2. Fetch Suggestions (if not an override from a previous suggestion)
-      if (!overrideQuery) {
-        const suggestRes = await fetch('http://localhost:8000/query/suggest', {
-          method: 'POST',
-          headers: { ...authHeaders, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: text, dataset_id: activeDatasetId })
-        });
-        
-        if (suggestRes.ok) {
-          const suggestData = await suggestRes.json();
-          if (suggestData.suggestions && suggestData.suggestions.length > 0) {
-            setIsThinking(false);
-            addMessage(activeDatasetId, {
-              id: 'sug-' + Date.now(),
-              type: 'suggestions',
-              suggestions: suggestData.suggestions,
-              originalQuery: text
-            });
-            return;
-          }
-        }
-      }
-
-      // 3. Execute Query
+      // 2. Execute Query
       await executeQuery(activeDatasetId, text, clarificationFeedback);
     } catch (err) {
       addMessage(activeDatasetId, { 
@@ -264,7 +252,7 @@ const DashboardPage: React.FC = () => {
         body: JSON.stringify({
           question: clarificationFeedback?.originalQuery || text,
           dataset_id: datasetId,
-          session_id: clarificationFeedback?.sessionId,
+          session_id: clarificationFeedback?.sessionId || getCurrentSessionId(),
           answer_key: clarificationFeedback?.answerKey,
           answer_value: clarificationFeedback?.answerValue,
           clarification_feedback: clarificationFeedback ? {
@@ -279,44 +267,52 @@ const DashboardPage: React.FC = () => {
       });
 
       const data = await res.json();
-      if (res.ok) {
-        if (data.status === 'processing') {
+        if (res.ok) {
+          if (data.status === 'processing') {
             addMessage(datasetId, {
               id: 'ans-' + Date.now(),
               type: 'assistant',
               error: `Query is crunching a large dataset in the background natively. Job ID: ${data.job_id}.`
             });
             return;
-        }
+          }
 
-        if (data.needs_clarification) {
-          addMessage(datasetId, {
-            id: 'clarify-' + Date.now(),
-            type: 'suggestions',
+          const assistantMessage = {
+            id: 'ans-' + Date.now(),
+            type: 'assistant' as const,
+            data: data.data,
+            sql: data.sql,
+            rowCount: data.row_count,
+            insights: data.insights,
+            originalQuery: text,
+            confidenceScore: data.confidence_score,
+            sessionId: data.session_id,
+            interpretation: data.interpretation,
+            correctionPrompt: data.correction_prompt,
+            assumedDefaults: data.assumed_defaults || []
+          };
+
+          if (Array.isArray(data.data) && (data.data.length > 0 || data.interpretation || data.correction_prompt)) {
+            addMessage(datasetId, assistantMessage);
+          }
+
+          if (data.needs_clarification) {
+            addMessage(datasetId, {
+              id: 'clarify-' + Date.now(),
+              type: 'suggestions',
             suggestions: data.clarification_options || [],
             originalQuery: text,
             content: data.clarification_question || 'I need a bit more detail before I run that.',
             clarificationQuestion: data.clarification_question,
             confidenceScore: data.confidence_score,
             clarificationTerms: data.clarification_terms || [],
-            interactionType: data.interaction_type,
-            interactionPayload: data.interaction_payload,
-            sessionId: data.session_id
-          });
-          return;
-        }
-
-        addMessage(datasetId, {
-          id: 'ans-' + Date.now(),
-          type: 'assistant',
-          data: data.data,
-          sql: data.sql,
-          rowCount: data.row_count,
-          insights: data.insights,
-          originalQuery: text,
-          confidenceScore: data.confidence_score,
-          sessionId: data.session_id
-        });
+              interactionType: data.interaction_type,
+              interactionPayload: data.interaction_payload,
+              sessionId: data.session_id
+            });
+          } else if (!Array.isArray(data.data) || data.data.length === 0) {
+            addMessage(datasetId, assistantMessage);
+          }
       } else {
         addMessage(datasetId, {
           id: 'ans-' + Date.now(),
@@ -430,7 +426,7 @@ const DashboardPage: React.FC = () => {
                     </div>
                   ) : msg.type === 'suggestions' ? (
                     <div>
-                      {msg.interactionType === 'clarification_chat' && msg.interactionPayload ? (
+                      {(msg.interactionType === 'clarification_chat' || msg.interactionType === 'multi_slot_clarification') && msg.interactionPayload ? (
                         <div className="flex gap-6 max-w-4xl mb-4 animate-in slide-in-from-left-4 fade-in">
                           <div className="w-8 h-8 mt-1 shrink-0">
                             <span className="material-symbols-outlined text-secondary font-fill" style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -529,6 +525,26 @@ const DashboardPage: React.FC = () => {
                           </div>
                         ) : (
                           <>
+                            {(msg.interpretation || msg.correctionPrompt || (msg.assumedDefaults && msg.assumedDefaults.length > 0)) && (
+                              <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-700">
+                                {msg.interpretation && (
+                                  <p className="mb-2"><span className="font-semibold text-slate-900">Interpretation:</span> {msg.interpretation}</p>
+                                )}
+                                {msg.assumedDefaults && msg.assumedDefaults.length > 0 && (
+                                  <div className="mb-2">
+                                    <p className="font-semibold text-slate-900">Assumptions used:</p>
+                                    <ul className="mt-1 space-y-1">
+                                      {msg.assumedDefaults.map((assumption, idx) => (
+                                        <li key={idx} className="text-xs text-slate-600">- {assumption}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                                {msg.correctionPrompt && (
+                                  <p className="text-xs text-slate-500">{msg.correctionPrompt}</p>
+                                )}
+                              </div>
+                            )}
                             {msg.insights ? (
                               <div className="mt-4">
                                 <DashboardPanel insights={msg.insights} data={msg.data || []} rowCount={msg.rowCount || 0} />

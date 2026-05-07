@@ -90,6 +90,9 @@ class QueryResponse(BaseModel):
     interaction_type: Optional[str] = None
     interaction_payload: Optional[Dict[str, Any]] = None
     session_id: Optional[str] = None
+    interpretation: Optional[str] = None
+    correction_prompt: Optional[str] = None
+    assumed_defaults: List[str] = []
 
 
 class AsyncJobResponse(BaseModel):

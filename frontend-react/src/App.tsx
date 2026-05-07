@@ -7,6 +7,7 @@ import AuthCallback from './pages/AuthCallback';
 import DashboardPage from './pages/DashboardPage';
 import { ProfitDashboardPage } from './pages/ProfitDashboardPage';
 import ExecutiveDashboard from './pages/ExecutiveDashboard';
+import SalesRegisterDashboard from './pages/SalesRegisterDashboard';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
@@ -44,6 +45,14 @@ const App: React.FC = () => {
           element={
             <ProtectedRoute>
               <ExecutiveDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sales-register-dashboard"
+          element={
+            <ProtectedRoute>
+              <SalesRegisterDashboard />
             </ProtectedRoute>
           }
         />

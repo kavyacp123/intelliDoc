@@ -1,4 +1,5 @@
 import logging
+import uuid
 from typing import Any, Dict, List, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query as FastAPIQuery
@@ -42,7 +43,7 @@ from app.services.table_router import route_query
 from app.services.logic_enforcer import enforce_logic
 from app.services.confidence_service import score_plan_confidence
 from app.services import rag_service
-from app.services.interaction_controller import build_interaction_response
+from app.services.interaction_controller import build_interaction_response, resolve_from_history
 from app.services.session_service import session_service
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,27 @@ def _filter_tenant_id(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     for row in data:
         row.pop("tenant_id", None)
     return data
+
+
+def _is_completely_vague(question: str) -> bool:
+    vague_inputs = {
+        "show data",
+        "show summary",
+        "summary",
+        "overview",
+        "performance",
+        "show performance",
+    }
+    return question.lower().strip() in vague_inputs
+
+
+def _assumed_defaults(confidence_result: Dict[str, Any]) -> List[str]:
+    assumptions = []
+    for issue in confidence_result.get("issues", []):
+        issue_type = issue.get("type")
+        if issue_type in {"weak_mapping", "missing_metric", "ambiguity"}:
+            assumptions.append(issue.get("description", ""))
+    return assumptions[:3]
 
 
 # Removed duplicate AsyncJobResponse
@@ -173,6 +195,42 @@ async def query_data(
 
     # ── 3. Synonym Normalization ──
     normalized_question = semantic_service.normalize_question(request.question)
+    session_context = session_service.get_session_context(active_session_id, current_user)
+
+    if _is_completely_vague(normalized_question):
+        suggestions = []
+        try:
+            from app.services.suggestion_service import generate_suggestions
+
+            suggestions = generate_suggestions(normalized_question, schemas)
+        except Exception:
+            suggestions = []
+
+        active_session_id = session_service.merge_session_context(
+            active_session_id,
+            current_user,
+            dataset_id=dataset_id,
+            last_dimensions=session_context.get("last_dimensions"),
+            last_metric=session_context.get("last_metric"),
+        )
+        return QueryResponse(
+            data=[],
+            sql="",
+            chart_hint=None,
+            row_count=0,
+            warnings=[],
+            execution_plan={"strategy": "suggestions", "execution_mode": "sync", "estimated_cost": 0},
+            explanation={"optimization": "The system asked for a more specific query before execution."},
+            insights=None,
+            needs_clarification=True,
+            clarification_question="I can answer this faster if you tell me what metric or angle you want.",
+            clarification_options=suggestions,
+            interaction_type="suggestions",
+            interaction_payload={"message": "Pick one of these or keep your original wording.", "options": suggestions},
+            session_id=active_session_id,
+            interpretation="I treated your request as too broad to interpret safely without a metric or angle.",
+            correction_prompt="Pick a suggestion or tell me what metric should matter.",
+        )
 
     # ── 4. Fetch Dynamic Semantics (Redis-cached per dataset) ──
     semantics = {}
@@ -229,6 +287,12 @@ async def query_data(
             # ── 7. Resolvers ──
             resolve_metric(plan_obj, schema_dict)
             resolve_time(plan_obj, schema_dict)
+            history_resolution = resolve_from_history(
+                question=normalized_question,
+                plan=plan_obj,
+                schema=schema_dict,
+                session_context=session_context,
+            )
 
             rag_matches = rag_service.retrieve_business_context(
                 question=normalized_question,
@@ -250,8 +314,10 @@ async def query_data(
                 semantics=semantics,
                 rag_resolved_terms=rag_resolution["resolved_terms"],
                 rag_term_results=rag_resolution["term_results"],
+                session_context=session_context,
             )
 
+            interaction = None
             if confidence_result["needs_clarification"]:
                 sample_values = schema_service.get_sample_values(dataset_id) if dataset_id else {}
                 interaction = build_interaction_response(
@@ -278,33 +344,6 @@ async def query_data(
                         },
                     },
                 )
-                return QueryResponse(
-                    data=[],
-                    sql="",
-                    chart_hint=None,
-                    row_count=0,
-                    warnings=[issue["description"] for issue in confidence_result["issues"]],
-                    execution_plan={
-                        "strategy": "clarification",
-                        "execution_mode": "sync",
-                        "estimated_cost": 0,
-                    },
-                    explanation={
-                        "optimization": "Clarification requested before execution to avoid a weak or ambiguous answer."
-                    },
-                    insights=None,
-                    confidence_score=confidence_result["confidence"],
-                    confidence_issues=confidence_result["issues"],
-                    needs_clarification=True,
-                    clarification_question=interaction["question"],
-                    clarification_options=interaction["options"],
-                    clarification_terms=confidence_result["clarification_terms"],
-                    failure_type=interaction["failure_type"],
-                    interaction_type=interaction.get("interaction_type"),
-                    interaction_payload=interaction.get("payload"),
-                    session_id=active_session_id,
-                )
-            
             # ── 8. Intent Validator ──
             allowed_columns_for_intent = set(allowed_columns)
             if semantics:
@@ -351,18 +390,42 @@ async def query_data(
             else:
                 chart_hint = llm_service._infer_chart_hint(normalized_question)
             
+            active_session_id = session_service.merge_session_context(
+                active_session_id,
+                current_user,
+                dataset_id=dataset_id,
+                resolved_terms={
+                    **(history_resolution.get("resolved_terms") or {}),
+                    **(rag_resolution.get("resolved_terms") or {}),
+                },
+                last_metric=next((step.metric for step in plan_obj.steps if step.metric), None),
+                last_dimensions=next((step.dimensions for step in plan_obj.steps if step.dimensions), []),
+            )
+
             return QueryResponse(
                 data=data,
                 sql=safe_sql,
                 chart_hint=chart_hint,
                 row_count=len(data),
-                warnings=_merge_warnings(rag_resolution["applied_rules"], feedback_info),
+                warnings=_merge_warnings(rag_resolution["applied_rules"], feedback_info) + [
+                    issue["description"] for issue in confidence_result["issues"]
+                ],
                 execution_plan=execution_plan,
                 explanation=explanation,
                 insights=insights_res,
                 confidence_score=confidence_result["confidence"],
                 confidence_issues=confidence_result["issues"],
+                needs_clarification=bool(interaction),
+                clarification_question=interaction["question"] if interaction else None,
+                clarification_options=interaction["options"] if interaction else [],
+                clarification_terms=confidence_result["clarification_terms"],
+                failure_type=interaction["failure_type"] if interaction else None,
+                interaction_type=interaction.get("interaction_type") if interaction else None,
+                interaction_payload=interaction.get("payload") if interaction else None,
                 session_id=active_session_id,
+                interpretation=confidence_result.get("interpretation"),
+                correction_prompt="Not what you meant? Tell me what to change and I will adjust the query.",
+                assumed_defaults=_assumed_defaults(confidence_result),
             )
             
         except Exception as e:

@@ -6,11 +6,223 @@ and converts it into a flattened, normalized schema ready for SQL analytics.
 """
 
 import logging
+import re
 import pandas as pd
 import numpy as np
 from typing import Dict, Any
+from pandas.api.types import is_datetime64_any_dtype
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_column_name(df: pd.DataFrame, target: str) -> str | None:
+    """Find a column by case-insensitive name match."""
+    target = target.strip().lower()
+    for col in df.columns:
+        if str(col).strip().lower() == target:
+            return col
+    return None
+
+
+def _row_is_effectively_empty(row: pd.Series) -> bool:
+    for val in row.values:
+        if pd.isna(val):
+            continue
+        if isinstance(val, str) and not val.strip():
+            continue
+        return False
+    return True
+
+
+def _looks_like_summary_row(row: pd.Series) -> bool:
+    for val in row.values[:5]:
+        if isinstance(val, str):
+            lowered = val.strip().lower()
+            if lowered in {"total", "grand total"} or lowered.startswith("total:"):
+                return True
+    return False
+
+
+def _is_parent_date_value(value: Any) -> bool:
+    if pd.isna(value):
+        return False
+    if isinstance(value, str) and not value.strip():
+        return False
+    if is_datetime64_any_dtype(type(value)):
+        return True
+    parsed = pd.to_datetime([value], errors="coerce")
+    return bool(parsed.notna()[0])
+
+
+def _is_sales_register_parent(row: pd.Series, date_col: str) -> bool:
+    return _is_parent_date_value(row.get(date_col))
+
+
+def _is_sales_register_child(
+    row: pd.Series,
+    date_col: str,
+    particulars_col: str,
+    all_columns: list[str],
+) -> bool:
+    date_empty = pd.isna(row.get(date_col)) or str(row.get(date_col)).strip() in {"", "nan", "NaT"}
+    particulars_val = row.get(particulars_col)
+    particulars_filled = pd.notna(particulars_val) and str(particulars_val).strip() != ""
+    other_cols = [c for c in all_columns if c not in (date_col, particulars_col)]
+    all_others_empty = all(pd.isna(row.get(col)) for col in other_cols)
+    return date_empty and particulars_filled and all_others_empty
+
+
+def is_sales_register_parent_child(df: pd.DataFrame) -> bool:
+    """
+    Detect the parent-child sales register pattern seen in SR_22-23 type files.
+
+    Parent rows contain transaction context (especially Date), while child rows
+    only contain a product name under Particulars.
+    """
+    if df.empty or len(df.columns) < 2:
+        return False
+
+    date_col = _resolve_column_name(df, "Date")
+    particulars_col = _resolve_column_name(df, "Particulars")
+    if not date_col or not particulars_col:
+        return False
+
+    parent_count = 0
+    child_count = 0
+    sampled_rows = 0
+
+    for _, row in df.iterrows():
+        if _row_is_effectively_empty(row) or _looks_like_summary_row(row):
+            continue
+        sampled_rows += 1
+        if _is_sales_register_parent(row, date_col):
+            parent_count += 1
+        elif _is_sales_register_child(row, date_col, particulars_col, list(df.columns)):
+            child_count += 1
+
+    if sampled_rows == 0 or parent_count == 0 or child_count == 0:
+        return False
+
+    child_ratio = child_count / max(sampled_rows, 1)
+    return child_ratio >= 0.10
+
+
+def flatten_sales_register_parent_child(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Flatten SR-style parent/child transaction sheets into one row per product.
+
+    Parent row:
+      Date + transaction metadata
+    Child row:
+      only Particulars populated -> represents a product/item
+    """
+    date_col = _resolve_column_name(df, "Date")
+    particulars_col = _resolve_column_name(df, "Particulars")
+    if not date_col or not particulars_col:
+        return df
+
+    flat_rows = []
+    current_parent: Dict[str, Any] | None = None
+    current_children: list[str] = []
+
+    def _parse_payment_days(raw_value: Any) -> float | None:
+        if pd.isna(raw_value):
+            return None
+        text = str(raw_value).strip().lower()
+        if not text:
+            return None
+        if "advance" in text:
+            return 0.0
+        match = re.search(r"(\d+(?:\.\d+)?)", text)
+        return float(match.group(1)) if match else None
+
+    def _numeric_value(parent: Dict[str, Any], candidates: list[str]) -> float:
+        for candidate in candidates:
+            actual = _resolve_column_name(pd.DataFrame(columns=parent.keys()), candidate)
+            if actual is None:
+                continue
+            value = parent.get(actual)
+            if pd.isna(value):
+                continue
+            try:
+                return float(value)
+            except Exception:
+                continue
+        return 0.0
+
+    def _emit_parent_rows(parent: Dict[str, Any], children: list[str]) -> None:
+        if parent is None:
+            return
+
+        product_names = [child for child in children if child.strip()]
+        if not product_names:
+            particulars_val = parent.get(particulars_col)
+            if pd.notna(particulars_val) and str(particulars_val).strip():
+                product_names = [str(particulars_val).strip()]
+
+        if not product_names:
+            return
+
+        line_item_count = len(product_names)
+        gross_total = _numeric_value(parent, ["Gross Total"])
+        net_sales = _numeric_value(parent, ["Sales", "Export Sales", "Sales  Inside Guj GST", "Sales  Outside Guj GST"])
+        allocated_gross_total = gross_total / line_item_count if line_item_count else 0.0
+        allocated_revenue = (net_sales or gross_total) / line_item_count if line_item_count else 0.0
+        payment_days = _parse_payment_days(parent.get(_resolve_column_name(pd.DataFrame(columns=parent.keys()), "Terms of Payment") or "Terms of Payment"))
+
+        for product_name in product_names:
+            merged = parent.copy()
+            merged["Product"] = product_name
+            merged["Line Item Count"] = line_item_count
+            merged["Line Quantity"] = 1
+            merged["Allocated Gross Total"] = allocated_gross_total
+            merged["Allocated Revenue"] = allocated_revenue
+            if payment_days is not None:
+                merged["Payment Term Days"] = payment_days
+            flat_rows.append(merged)
+
+    for _, row in df.iterrows():
+        if _row_is_effectively_empty(row) or _looks_like_summary_row(row):
+            continue
+
+        row_dict = row.to_dict()
+
+        if _is_sales_register_parent(row, date_col):
+            if current_parent is not None:
+                _emit_parent_rows(current_parent, current_children)
+            current_parent = row_dict.copy()
+            current_children = []
+            continue
+
+        if _is_sales_register_child(row, date_col, particulars_col, list(df.columns)) and current_parent is not None:
+            current_children.append(str(row.get(particulars_col)).strip())
+            continue
+
+        if current_parent is not None and pd.notna(row.get(particulars_col)) and str(row.get(particulars_col)).strip():
+            fallback_product = str(row.get(particulars_col)).strip()
+            if fallback_product:
+                current_children.append(fallback_product)
+
+    if current_parent is not None:
+        _emit_parent_rows(current_parent, current_children)
+
+    if not flat_rows:
+        return df
+
+    df_flat = pd.DataFrame(flat_rows)
+
+    priority_cols = [col for col in ["Date", "Product"] if col in df_flat.columns]
+    other_cols = [c for c in df_flat.columns if c not in priority_cols]
+    df_flat = df_flat[priority_cols + other_cols]
+
+    if "Date" in df_flat.columns:
+        df_flat["Date"] = pd.to_datetime(df_flat["Date"], errors="coerce").dt.date
+
+    if "Product" in df_flat.columns:
+        df_flat = df_flat[df_flat["Product"].notna() & (df_flat["Product"].astype(str).str.strip() != "")]
+
+    df_flat.reset_index(drop=True, inplace=True)
+    return df_flat
 
 # =========================
 # 1. STRUCTURE DETECTION
@@ -19,6 +231,9 @@ def detect_structure(df: pd.DataFrame) -> str:
     """Classifies the DataFrame structure using missing data patterns."""
     if df.empty:
         return "unknown"
+
+    if is_sales_register_parent_child(df):
+        return "sales_register_parent_child"
         
     total_cells = df.shape[0] * df.shape[1]
     if total_cells == 0:
@@ -237,9 +452,13 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
 
     # Clean any string numeric columns (e.g. currency signs)
     for col in df.columns:
-        if col in ("revenue", "quantity", "cost", "sales", "price") or 'amount' in col:
-             # Try numeric cast
-             df[col] = pd.to_numeric(df[col], errors="coerce")
+        numeric_like = {
+            "revenue", "quantity", "cost", "sales", "price",
+            "gross_total", "allocated_gross_total", "allocated_revenue",
+            "line_item_count", "line_quantity", "payment_term_days",
+        }
+        if col in numeric_like or 'amount' in col:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
     return df
 
@@ -270,7 +489,9 @@ def structure_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     logger.info(f"Detected dataset structure: {structure}")
 
     # Process based on type
-    if structure == "tabular":
+    if structure == "sales_register_parent_child":
+        df = flatten_sales_register_parent_child(df)
+    elif structure == "tabular":
         df = clean_tabular(df)
     elif structure == "multi_line":
         df = parse_multiline(df)

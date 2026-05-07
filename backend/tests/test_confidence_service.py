@@ -125,3 +125,26 @@ def test_close_rag_matches_trigger_specific_clarification():
     assert result["needs_clarification"] is True
     assert result["clarification_question"] == "How should 'best' be defined?"
     assert result["clarification_options"][:2] == ["Revenue", "Profit"]
+
+
+def test_session_context_boosts_repeated_ambiguity():
+    schema = {
+        "metrics": ["revenue", "profit", "items"],
+        "dimensions": ["party"],
+        "time_dimensions": [],
+    }
+    original = _make_plan(metric=None)
+    resolved = _make_plan(metric="revenue")
+
+    result = score_plan_confidence(
+        question="best party",
+        original_plan=original,
+        resolved_plan=resolved,
+        schema=schema,
+        semantics={},
+        session_context={"resolved_terms": {"best": "revenue"}, "last_metric": "revenue"},
+    )
+
+    assert result["confidence"] > 0.7
+    assert result["execution_strategy"] == "direct_answer"
+    assert result["interpretation"]

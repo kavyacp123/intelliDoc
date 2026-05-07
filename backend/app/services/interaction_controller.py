@@ -38,6 +38,7 @@ def build_interaction_response(
     sample_values: Dict[str, List[str]] | None = None,
 ) -> Dict[str, object]:
     sample_values = sample_values or {}
+    missing_slots = confidence_result.get("missing_slots", [])
     failure_type = classify_failure_type(
         question=question,
         original_plan=original_plan,
@@ -63,49 +64,46 @@ def build_interaction_response(
 
     if failure_type == "missing_structure":
         options = _structure_options(schema)
-        expected_fields = ["metric"] + (["time"] if schema.get("time_dimensions") else [])
+        slot_payload = missing_slots or [
+            {
+                "key": "metric",
+                "question": "Which metric should I use?",
+                "options": options,
+            }
+        ]
+        expected_fields = [slot["key"] for slot in slot_payload if slot.get("key")]
         return {
-            "interaction_type": "clarification_chat",
+            "interaction_type": "multi_slot_clarification",
             "failure_type": failure_type,
-            "question": "I need a bit more structure before I run that. Which metric should I use?",
+            "question": "I made a best-effort answer, but I need a couple of details to tighten it up.",
             "options": options,
             "payload": {
-                "type": "clarification_chat",
-                "message": "I need a bit more detail to answer this.",
-                "questions": [
-                    {
-                        "key": "metric",
-                        "question": "Which metric do you want?",
-                        "options": options,
-                    },
-                    {
-                        "key": "time",
-                        "question": "Do you want this over time?",
-                        "options": ["Yes", "No"] if schema.get("time_dimensions") else [],
-                    },
-                ],
+                "type": "multi_slot_clarification",
+                "message": "I made a best guess. Help me tighten it with these details:",
+                "questions": slot_payload,
                 "expected_fields": expected_fields,
             },
         }
 
     if failure_type == "partial_intent":
         options = _partial_intent_options(schema)
+        slot_payload = missing_slots or [
+            {
+                "key": "metric",
+                "question": "Which metric or view should I use?",
+                "options": options,
+            }
+        ]
         return {
-            "interaction_type": "clarification_chat",
+            "interaction_type": "multi_slot_clarification",
             "failure_type": failure_type,
-            "question": "I understand the topic, but I need one more detail to finish the query.",
+            "question": "I answered with a best guess, but one detail is still fuzzy.",
             "options": options,
             "payload": {
-                "type": "clarification_chat",
-                "message": "Got it — just need a bit more detail:",
-                "questions": [
-                    {
-                        "key": "metric",
-                        "question": "Which metric or view do you want?",
-                        "options": options,
-                    }
-                ],
-                "expected_fields": ["metric"],
+                "type": "multi_slot_clarification",
+                "message": "Got it — help me confirm these assumptions:",
+                "questions": slot_payload,
+                "expected_fields": [slot["key"] for slot in slot_payload if slot.get("key")],
             },
         }
 
@@ -123,6 +121,45 @@ def build_interaction_response(
             ],
         },
     }
+
+
+def resolve_from_history(
+    question: str,
+    plan: MultiStepPlan,
+    schema: dict,
+    session_context: Dict[str, object] | None = None,
+) -> Dict[str, object]:
+    """Fill missing intent fields from previously established session context."""
+    session_context = session_context or {}
+    resolved_terms = session_context.get("resolved_terms", {}) or {}
+    metrics = set(schema.get("metrics", [])) | set(schema.get("semantic_metrics", []))
+    q = question.lower()
+    applied: Dict[str, str] = {}
+
+    for term, resolution in resolved_terms.items():
+        if term.lower() in q and resolution in metrics:
+            for step in plan.steps:
+                if step.intent_type == "row_level":
+                    continue
+                if not step.metric:
+                    step.metric = resolution
+                    applied[term] = resolution
+
+    last_metric = session_context.get("last_metric")
+    generic_follow_up = q.strip() in GENERIC_STRUCTURE_TERMS or q.startswith("show ") and " by " not in q and " of " not in q
+    if last_metric in metrics and generic_follow_up:
+        for step in plan.steps:
+            if step.intent_type != "row_level" and not step.metric:
+                step.metric = str(last_metric)
+                applied["last_metric"] = str(last_metric)
+
+    last_dimensions = [dim for dim in (session_context.get("last_dimensions") or []) if dim in schema.get("dimensions", [])]
+    if generic_follow_up and last_dimensions:
+        for step in plan.steps:
+            if not step.dimensions:
+                step.dimensions = [last_dimensions[0]]
+
+    return {"resolved_terms": applied}
 
 
 def classify_failure_type(

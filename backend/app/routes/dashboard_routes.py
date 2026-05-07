@@ -1,11 +1,17 @@
+import io
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
+from fastapi.responses import StreamingResponse
 
 from app.services.normalization_service import NormalizationService
 from app.services.kpi_engine import KPIEngine
 from app.services.dashboard_generator import generate_executive_dashboard
 from app.services.executive_insight_generator import generate_executive_insights
+from app.services.sales_register_dashboard import (
+    build_sales_register_dashboard,
+    export_sales_register_dashboard,
+)
 from app.core.database import get_connection
 from app.core.security import get_current_user
 
@@ -21,6 +27,10 @@ class DashboardResponse(BaseModel):
     table: Dict[str, Any]
 
 class ExecutiveDashboardRequest(BaseModel):
+    dataset_id: str
+
+
+class SalesRegisterDashboardRequest(BaseModel):
     dataset_id: str
 
 # In-memory cache for demo/performance (use Redis for production)
@@ -187,3 +197,35 @@ async def generate_insights(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Insight generation failed: {str(e)}")
+
+
+@router.post("/sales-register")
+async def sales_register_dashboard(
+    request: SalesRegisterDashboardRequest,
+    current_user: str = Depends(get_current_user),
+):
+    try:
+        return build_sales_register_dashboard(request.dataset_id, current_user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Sales register dashboard generation failed: {str(e)}")
+
+
+@router.get("/sales-register/export")
+async def export_sales_register(
+    dataset_id: str,
+    query_id: Optional[str] = None,
+    current_user: str = Depends(get_current_user),
+):
+    try:
+        workbook_bytes, file_name = export_sales_register_dashboard(dataset_id, current_user, query_id=query_id)
+        return StreamingResponse(
+            io.BytesIO(workbook_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{file_name}"'},
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Sales register export failed: {str(e)}")
