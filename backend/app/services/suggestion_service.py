@@ -18,6 +18,20 @@ from app.models.metadata import TableMetadata
 logger = logging.getLogger(__name__)
 
 
+def is_completely_vague(question: str) -> bool:
+    """Return True when a query is too broad to execute meaningfully."""
+    vague_inputs = {
+        "show data",
+        "show me data",
+        "show summary",
+        "summary",
+        "overview",
+        "performance",
+        "show performance",
+    }
+    return question.lower().strip() in vague_inputs
+
+
 def generate_suggestions(
     question: str,
     schemas: List[TableMetadata],

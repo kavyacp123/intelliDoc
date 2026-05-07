@@ -128,7 +128,14 @@ async def query_data(
         table_name = schemas[0].table_name
 
     if request.clarification_feedback:
-        feedback = request.clarification_feedback
+        feedback = (
+            {"selected_option": request.clarification_feedback}
+            if isinstance(request.clarification_feedback, str)
+            else request.clarification_feedback
+        )
+        if request.answer_key and request.answer_value:
+            feedback.setdefault("answer_key", request.answer_key)
+            feedback.setdefault("answer_value", request.answer_value)
         pending = session_service.get_pending_interaction(
             session_id=feedback.get("session_id") or request.session_id,
             tenant_id=current_user,
@@ -145,7 +152,9 @@ async def query_data(
                     waiting_payload = dict(pending.get("context", {}).get("interaction_payload") or {})
                     waiting_payload["answers"] = pending.get("answers", {})
                     return QueryResponse(
+                        response_type="clarification",
                         data=[],
+                        result=[],
                         sql="",
                         chart_hint=None,
                         row_count=0,
@@ -193,6 +202,9 @@ async def query_data(
         )
         request.question = request.question or feedback.get("original_query", request.question)
 
+    if not request.question:
+        raise HTTPException(status_code=400, detail="query or question is required")
+
     # ── 3. Synonym Normalization ──
     normalized_question = semantic_service.normalize_question(request.question)
     session_context = session_service.get_session_context(active_session_id, current_user)
@@ -214,7 +226,9 @@ async def query_data(
             last_metric=session_context.get("last_metric"),
         )
         return QueryResponse(
+            response_type="suggestions",
             data=[],
+            result=[],
             sql="",
             chart_hint=None,
             row_count=0,
@@ -228,6 +242,8 @@ async def query_data(
             interaction_type="suggestions",
             interaction_payload={"message": "Pick one of these or keep your original wording.", "options": suggestions},
             session_id=active_session_id,
+            suggestions=suggestions,
+            message="Pick one of these or keep your original wording.",
             interpretation="I treated your request as too broad to interpret safely without a metric or angle.",
             correction_prompt="Pick a suggestion or tell me what metric should matter.",
         )
@@ -403,7 +419,9 @@ async def query_data(
             )
 
             return QueryResponse(
+                response_type="answer",
                 data=data,
+                result=data,
                 sql=safe_sql,
                 chart_hint=chart_hint,
                 row_count=len(data),
@@ -415,6 +433,7 @@ async def query_data(
                 insights=insights_res,
                 confidence_score=confidence_result["confidence"],
                 confidence_issues=confidence_result["issues"],
+                resolved_from_history=list((history_resolution.get("resolved_terms") or {}).keys()),
                 needs_clarification=bool(interaction),
                 clarification_question=interaction["question"] if interaction else None,
                 clarification_options=interaction["options"] if interaction else [],
@@ -424,6 +443,7 @@ async def query_data(
                 interaction_payload=interaction.get("payload") if interaction else None,
                 session_id=active_session_id,
                 interpretation=confidence_result.get("interpretation"),
+                slot_scores=confidence_result.get("slot_scores", {}),
                 correction_prompt="Not what you meant? Tell me what to change and I will adjust the query.",
                 assumed_defaults=_assumed_defaults(confidence_result),
             )
@@ -472,7 +492,9 @@ async def query_data(
         logger.info("Result cache hit.")
         cached_result = _filter_tenant_id(cached_result)
         return QueryResponse(
+            response_type="answer",
             data=cached_result,
+            result=cached_result,
             sql=safe_sql,
             chart_hint=chart_hint,
             row_count=len(cached_result),
@@ -521,7 +543,9 @@ async def query_data(
         raise HTTPException(status_code=500, detail=str(e))
 
     return QueryResponse(
+        response_type="answer",
         data=data,
+        result=data,
         sql=safe_sql,
         chart_hint=chart_hint,
         row_count=len(data),

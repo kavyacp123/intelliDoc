@@ -28,6 +28,16 @@ interface Message {
   assumedDefaults?: string[];
 }
 
+interface ClarificationFeedback {
+  originalQuery: string;
+  selectedOption: string;
+  ambiguousTerms: string[];
+  sessionId?: string;
+  answerKey?: string;
+  answerValue?: string;
+  correctedQuery?: string;
+}
+
 const DashboardPage: React.FC = () => {
   const { token, logout } = useAuth();
   const [datasets, setDatasets] = useState<any[]>([]);
@@ -37,6 +47,8 @@ const DashboardPage: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [openCorrectionId, setOpenCorrectionId] = useState<string | null>(null);
+  const [correctionDrafts, setCorrectionDrafts] = useState<Record<string, string>>({});
   const chatHistoryRef = useRef<HTMLDivElement>(null);
 
   const activeMessages = activeDatasetId ? chatHistories[activeDatasetId] || [] : [];
@@ -201,14 +213,7 @@ const DashboardPage: React.FC = () => {
 
   const handleSend = async (
     overrideQuery?: string,
-    clarificationFeedback?: {
-      originalQuery: string;
-      selectedOption: string;
-      ambiguousTerms: string[];
-      sessionId?: string;
-      answerKey?: string;
-      answerValue?: string;
-    }
+    clarificationFeedback?: ClarificationFeedback
   ) => {
     const text = clarificationFeedback?.selectedOption || overrideQuery || query.trim();
     if (!text || !activeDatasetId) return;
@@ -233,24 +238,44 @@ const DashboardPage: React.FC = () => {
     }
   };
 
+  const updateCorrectionDraft = (messageId: string, value: string) => {
+    setCorrectionDrafts(prev => ({
+      ...prev,
+      [messageId]: value
+    }));
+  };
+
+  const submitCorrection = (message: Message) => {
+    const draft = (correctionDrafts[message.id] || '').trim();
+    const originalQuery = message.originalQuery || '';
+    if (!draft || !activeDatasetId) return;
+
+    setOpenCorrectionId(null);
+    updateCorrectionDraft(message.id, '');
+    handleSend(draft, {
+      originalQuery,
+      selectedOption: draft,
+      ambiguousTerms: message.clarificationTerms?.length ? message.clarificationTerms : ['correction'],
+      sessionId: message.sessionId || getCurrentSessionId(),
+      answerKey: 'correction',
+      answerValue: draft,
+      correctedQuery: originalQuery
+        ? `${originalQuery}. Correction from user: ${draft}`
+        : draft
+    });
+  };
+
   const executeQuery = async (
     datasetId: string,
     text: string,
-    clarificationFeedback?: {
-      originalQuery: string;
-      selectedOption: string;
-      ambiguousTerms: string[];
-      sessionId?: string;
-      answerKey?: string;
-      answerValue?: string;
-    }
+    clarificationFeedback?: ClarificationFeedback
   ) => {
     try {
       const res = await fetch('http://localhost:8000/query', {
         method: 'POST',
         headers: { ...authHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          question: clarificationFeedback?.originalQuery || text,
+          question: clarificationFeedback?.correctedQuery || clarificationFeedback?.originalQuery || text,
           dataset_id: datasetId,
           session_id: clarificationFeedback?.sessionId || getCurrentSessionId(),
           answer_key: clarificationFeedback?.answerKey,
@@ -284,7 +309,7 @@ const DashboardPage: React.FC = () => {
             sql: data.sql,
             rowCount: data.row_count,
             insights: data.insights,
-            originalQuery: text,
+            originalQuery: clarificationFeedback?.originalQuery || text,
             confidenceScore: data.confidence_score,
             sessionId: data.session_id,
             interpretation: data.interpretation,
@@ -541,7 +566,62 @@ const DashboardPage: React.FC = () => {
                                   </div>
                                 )}
                                 {msg.correctionPrompt && (
-                                  <p className="text-xs text-slate-500">{msg.correctionPrompt}</p>
+                                  <div className="mt-3 border-t border-slate-200 pt-3">
+                                    {openCorrectionId === msg.id ? (
+                                      <div className="rounded-xl border border-secondary/20 bg-white p-3 shadow-sm">
+                                        <label className="mb-2 block text-xs font-semibold text-slate-800">
+                                          What should change?
+                                        </label>
+                                        <textarea
+                                          value={correctionDrafts[msg.id] || ''}
+                                          onChange={(e) => updateCorrectionDraft(msg.id, e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                                              e.preventDefault();
+                                              submitCorrection(msg);
+                                            }
+                                          }}
+                                          className="min-h-20 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-secondary focus:bg-white focus:ring-2 focus:ring-secondary/10"
+                                          placeholder="Example: use gross_total instead of net_profit, group by customer, and only show last month."
+                                          autoFocus
+                                        />
+                                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                                          <Button
+                                            variant="secondary"
+                                            className="h-8 px-3 text-xs font-semibold"
+                                            onClick={() => submitCorrection(msg)}
+                                            disabled={!correctionDrafts[msg.id]?.trim() || isThinking}
+                                          >
+                                            <span className="material-symbols-outlined text-[15px]">refresh</span>
+                                            Update answer
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            className="h-8 px-3 text-xs"
+                                            onClick={() => {
+                                              setOpenCorrectionId(null);
+                                              updateCorrectionDraft(msg.id, '');
+                                            }}
+                                          >
+                                            Cancel
+                                          </Button>
+                                          <span className="ml-auto text-[10px] text-slate-400">Cmd/Ctrl + Enter</span>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-xs text-slate-500">{msg.correctionPrompt}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => setOpenCorrectionId(msg.id)}
+                                          className="inline-flex h-7 items-center gap-1.5 rounded-full border border-secondary/20 bg-white px-3 text-[11px] font-semibold text-secondary shadow-sm transition hover:border-secondary/40 hover:bg-secondary hover:text-white active:scale-95"
+                                        >
+                                          <span className="material-symbols-outlined text-[14px]">edit</span>
+                                          Not right?
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             )}

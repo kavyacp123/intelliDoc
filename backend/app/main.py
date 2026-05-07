@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.database import close_db, init_db
-from app.services.rag_service import initialize_vector_store
+from app.services.rag_service import initialize_vector_store, seed_global_knowledge
 from app.routes import (
     admin_routes,
     auth_routes, 
@@ -57,6 +57,14 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Secure AI Analytics Platform")
     init_db()
     logger.info("✅ Database initialized")
+    seed_global_knowledge([
+        {"term": "revenue", "resolution": "gross_total"},
+        {"term": "sales", "resolution": "gross_total"},
+        {"term": "profit", "resolution": "net_profit"},
+        {"term": "quantity", "resolution": "quantity_sold"},
+        {"term": "orders", "resolution": "order_count"},
+        {"term": "customers", "resolution": "party_name"},
+    ])
     try:
         initialize_vector_store()
     except Exception as e:

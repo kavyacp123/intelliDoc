@@ -223,6 +223,54 @@ def learn_from_clarification(
     }
 
 
+def seed_global_knowledge(entries: List[Dict[str, str]]) -> None:
+    """Seed idempotent global business definitions used by keyword/vector RAG."""
+    conn = get_connection()
+    inserted = 0
+
+    for entry in entries:
+        term = (entry.get("term") or "").strip().lower()
+        meaning = (entry.get("resolution") or entry.get("meaning") or "").strip()
+        knowledge_type = entry.get("knowledge_type") or "metric"
+        confidence = float(entry.get("confidence") or 0.95)
+        if not term or not meaning:
+            continue
+
+        existing = conn.execute(
+            """
+            SELECT id
+            FROM business_knowledge
+            WHERE tenant_id IS NULL
+              AND dataset_id IS NULL
+              AND lower(term) = ?
+              AND knowledge_type = ?
+              AND meaning = ?
+            LIMIT 1
+            """,
+            [term, knowledge_type, meaning],
+        ).fetchone()
+        if existing:
+            continue
+
+        record_id = str(uuid.uuid4())
+        embedding = _build_embedding_payload(term, meaning)
+        conn.execute(
+            """
+            INSERT INTO business_knowledge (
+                id, tenant_id, dataset_id, term, knowledge_type, meaning,
+                confidence, source, usage_count, embedding
+            )
+            VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [record_id, term, knowledge_type, meaning, confidence, "global_seed", 0, embedding],
+        )
+        inserted += 1
+
+    if inserted:
+        refresh_vector_index()
+    logger.info("Seeded %d global business knowledge entries.", inserted)
+
+
 def _apply_metric_resolution(plan: MultiStepPlan, meaning: str, schema: dict) -> bool:
     metrics = set(schema.get("metrics", [])) | set(schema.get("semantic_metrics", []))
     if meaning not in metrics:

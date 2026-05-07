@@ -2,20 +2,29 @@
 Pydantic schemas for query-related API requests and responses.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
 
 class QueryRequest(BaseModel):
     """POST /query — natural language question from the user."""
 
-    question: str
+    question: Optional[str] = None
+    query: Optional[str] = None  # backward-compatible alias used by the interaction guide
     dataset_id: Optional[str] = None  # optional: target a specific dataset
     session_id: Optional[str] = None  # session ID for multi-turn clarification flows
-    clarification_feedback: Optional[Dict[str, Any]] = None
+    clarification_feedback: Optional[Union[str, Dict[str, Any]]] = None
     answer_key: Optional[str] = None
     answer_value: Optional[str] = None
+
+    @model_validator(mode="after")
+    def normalize_query_alias(self) -> "QueryRequest":
+        if not self.question and self.query:
+            self.question = self.query
+        if not self.query and self.question:
+            self.query = self.question
+        return self
 
 
 class StructuredIntent(BaseModel):
@@ -68,7 +77,10 @@ class DashboardResponse(BaseModel):
 class QueryResponse(BaseModel):
     """POST /query response with results and transparency info."""
 
+    session_id: Optional[str] = None
+    response_type: str = "answer"
     data: List[Dict[str, Any]]
+    result: Any = None
     sql: str  # the validated/rewritten SQL that was actually executed
     chart_hint: Optional[str] = None  # e.g. "bar", "line", "pie"
     row_count: int = 0
@@ -82,6 +94,7 @@ class QueryResponse(BaseModel):
     insights: Optional[DashboardResponse] = None
     confidence_score: Optional[float] = None
     confidence_issues: List[Dict[str, str]] = []
+    resolved_from_history: List[str] = Field(default_factory=list)
     needs_clarification: bool = False
     clarification_question: Optional[str] = None
     clarification_options: List[str] = []
@@ -89,10 +102,18 @@ class QueryResponse(BaseModel):
     failure_type: Optional[str] = None
     interaction_type: Optional[str] = None
     interaction_payload: Optional[Dict[str, Any]] = None
-    session_id: Optional[str] = None
     interpretation: Optional[str] = None
+    suggestions: List[str] = Field(default_factory=list)
+    message: Optional[str] = None
+    slot_scores: Dict[str, float] = Field(default_factory=dict)
     correction_prompt: Optional[str] = None
     assumed_defaults: List[str] = []
+
+    @model_validator(mode="after")
+    def mirror_result_for_new_clients(self) -> "QueryResponse":
+        if self.result is None:
+            self.result = self.data
+        return self
 
 
 class AsyncJobResponse(BaseModel):
