@@ -58,7 +58,14 @@ class SessionService:
         self._sessions[session_id] = record
 
     def _default_context(self) -> Dict[str, Any]:
-        return {"resolved_terms": {}, "last_metric": None, "last_dimensions": []}
+        return {
+            "resolved_terms": {},
+            "last_metric": None,
+            "last_dimensions": [],
+            "last_intent": None,
+            "last_query": None,
+            "last_interpretation": None,
+        }
 
     def create_or_update_pending_interaction(
         self,
@@ -150,6 +157,9 @@ class SessionService:
         resolved_terms: Optional[Dict[str, str]] = None,
         last_metric: Optional[str] = None,
         last_dimensions: Optional[list[str]] = None,
+        last_intent: Optional[Dict[str, Any]] = None,
+        last_query: Optional[str] = None,
+        last_interpretation: Optional[str] = None,
     ) -> Optional[str]:
         sid = session_id or str(uuid.uuid4())
         session = self._load_record(sid, tenant_id) or {
@@ -165,6 +175,12 @@ class SessionService:
             context["last_metric"] = last_metric
         if last_dimensions:
             context["last_dimensions"] = list(last_dimensions)
+        if last_intent:
+            context["last_intent"] = last_intent
+        if last_query:
+            context["last_query"] = last_query
+        if last_interpretation:
+            context["last_interpretation"] = last_interpretation
         session["dataset_id"] = dataset_id or session.get("dataset_id")
         session["session_context"] = context
         session["updated_at"] = time.time()

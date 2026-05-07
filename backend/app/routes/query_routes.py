@@ -44,6 +44,11 @@ from app.services.logic_enforcer import enforce_logic
 from app.services.confidence_service import score_plan_confidence
 from app.services import rag_service
 from app.services.interaction_controller import build_interaction_response, resolve_from_history
+from app.services.intent_memory_service import (
+    apply_correction_to_plan,
+    build_plan_from_memory,
+    describe_plan_edit,
+)
 from app.services.session_service import session_service
 
 logger = logging.getLogger(__name__)
@@ -93,6 +98,7 @@ async def query_data(
 ):
     feedback_info = None
     active_session_id = request.session_id
+    correction_text = None
 
     # ── 1. Resolve dataset ──
     table_name = None
@@ -136,6 +142,8 @@ async def query_data(
         if request.answer_key and request.answer_value:
             feedback.setdefault("answer_key", request.answer_key)
             feedback.setdefault("answer_value", request.answer_value)
+        if feedback.get("answer_key") == "correction" or feedback.get("corrected_query"):
+            correction_text = str(feedback.get("answer_value") or feedback.get("selected_option") or "").strip()
         pending = session_service.get_pending_interaction(
             session_id=feedback.get("session_id") or request.session_id,
             tenant_id=current_user,
@@ -275,19 +283,7 @@ async def query_data(
     if not sql:
         try:
             from app.models.intent import MultiStepPlan
-            
-            # ── 5. LLM -> Intent JSON ──
-            intent_json = llm_service.generate_intent_json(
-                question=normalized_question,
-                schemas=schemas,
-                table_name=table_name,
-                semantics=semantics if semantics else None,
-            )
 
-            # ── 5.5 Create MultiStepPlan ──
-            plan_obj = MultiStepPlan(**intent_json)
-            original_plan = plan_obj.model_copy(deep=True)
-            
             # Construct a schema mapping for the Resolvers and Hybrid Engine
             schema_dict = {
                 "table_name": table_name,
@@ -296,6 +292,29 @@ async def query_data(
                 "time_dimensions": [c.name for c in schemas[0].columns if c.dtype.lower() in ("datetime", "date", "timestamp")],
                 "semantic_metrics": list(semantics.keys()) if semantics else [],
             }
+
+            memory_plan = build_plan_from_memory(session_context) if correction_text else None
+            memory_edit = {"changed": False, "changes": []}
+            if memory_plan:
+                plan_obj = memory_plan
+                original_plan = plan_obj.model_copy(deep=True)
+                memory_edit = apply_correction_to_plan(plan_obj, correction_text or "", schema_dict)
+                if not memory_edit["changed"]:
+                    logger.info("Correction did not match deterministic intent slots; falling back to LLM plan.")
+                    memory_plan = None
+
+            if not memory_plan:
+                # ── 5. LLM -> Intent JSON ──
+                intent_json = llm_service.generate_intent_json(
+                    question=normalized_question,
+                    schemas=schemas,
+                    table_name=table_name,
+                    semantics=semantics if semantics else None,
+                )
+
+                # ── 5.5 Create MultiStepPlan ──
+                plan_obj = MultiStepPlan(**intent_json)
+                original_plan = plan_obj.model_copy(deep=True)
             
             # ── 6. Intent Processor (Hybrid Rules) ──
             plan_obj = enhance_intent(plan_obj, normalized_question, schema_dict)
@@ -416,7 +435,14 @@ async def query_data(
                 },
                 last_metric=next((step.metric for step in plan_obj.steps if step.metric), None),
                 last_dimensions=next((step.dimensions for step in plan_obj.steps if step.dimensions), []),
+                last_intent=plan_obj.model_dump(),
+                last_query=normalized_question,
+                last_interpretation=confidence_result.get("interpretation"),
             )
+
+            interpretation = confidence_result.get("interpretation")
+            if memory_edit.get("changed"):
+                interpretation = f"{describe_plan_edit(memory_edit['changes'])} {interpretation or ''}".strip()
 
             return QueryResponse(
                 response_type="answer",
@@ -442,7 +468,7 @@ async def query_data(
                 interaction_type=interaction.get("interaction_type") if interaction else None,
                 interaction_payload=interaction.get("payload") if interaction else None,
                 session_id=active_session_id,
-                interpretation=confidence_result.get("interpretation"),
+                interpretation=interpretation,
                 slot_scores=confidence_result.get("slot_scores", {}),
                 correction_prompt="Not what you meant? Tell me what to change and I will adjust the query.",
                 assumed_defaults=_assumed_defaults(confidence_result),

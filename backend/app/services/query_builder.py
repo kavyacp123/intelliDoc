@@ -14,11 +14,29 @@ _TIME_GRANULARITY_MAP = {
 
 
 def _render_filter_clause(col: str, val) -> str:
+    if isinstance(val, dict):
+        parts = []
+        op_map = {"gte": ">=", "lte": "<=", "gt": ">", "lt": "<", "eq": "="}
+        for key, op in op_map.items():
+            if key not in val:
+                continue
+            raw_val = val[key]
+            if raw_val is None:
+                continue
+            if isinstance(raw_val, (int, float)):
+                parts.append(f"{col} {op} {raw_val}")
+            else:
+                parts.append(f"{col} {op} '{raw_val}'")
+        return " AND ".join(parts) if parts else "1=1"
+
     if isinstance(val, list):
         in_clause = ", ".join([f"'{v}'" for v in val])
         return f"{col} IN ({in_clause})"
 
     if isinstance(val, str):
+        time_clause = _render_time_shortcut(col, val)
+        if time_clause:
+            return time_clause
         for op in [">=", "<=", ">", "<", "="]:
             if val.startswith(op):
                 raw_val = val[len(op):].strip()
@@ -27,6 +45,17 @@ def _render_filter_clause(col: str, val) -> str:
                 return f"{col} {op} '{raw_val}'"
 
     return f"{col} = '{val}'"
+
+
+def _render_time_shortcut(col: str, val: str) -> Optional[str]:
+    shortcuts = {
+        "__last_month": f"{col} >= CURRENT_DATE - INTERVAL '1' MONTH",
+        "__this_month": f"DATE_TRUNC('month', {col}) = DATE_TRUNC('month', CURRENT_DATE)",
+        "__last_30_days": f"{col} >= CURRENT_DATE - INTERVAL '30' DAY",
+        "__last_quarter": f"{col} >= CURRENT_DATE - INTERVAL '3' MONTH",
+        "__this_year": f"DATE_TRUNC('year', {col}) = DATE_TRUNC('year', CURRENT_DATE)",
+    }
+    return shortcuts.get(val)
 
 
 def _resolve_metric(

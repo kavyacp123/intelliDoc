@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List, Optional
 
 class QueryIntent(BaseModel):
@@ -17,6 +17,22 @@ class StepIntent(BaseModel):
     depends_on: Optional[int] = None
     output: Optional[str] = None
 
+    @field_validator("metric", mode="before")
+    @classmethod
+    def coerce_metric(cls, value):
+        if isinstance(value, list):
+            return str(value[0]) if value else None
+        return value
+
+    @field_validator("dimensions", mode="before")
+    @classmethod
+    def coerce_dimensions(cls, value):
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        return value
+
 class FinalOutput(BaseModel):
     type: str
     description: str
@@ -29,4 +45,3 @@ class MultiStepPlan(BaseModel):
     
     # Internal context bindings (added by the processor later)
     resolved_time_column: Optional[str] = None
-

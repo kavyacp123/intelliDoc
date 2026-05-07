@@ -265,6 +265,21 @@ const DashboardPage: React.FC = () => {
     });
   };
 
+  const submitQuickCorrection = (message: Message, correction: string) => {
+    const originalQuery = message.originalQuery || '';
+    handleSend(correction, {
+      originalQuery,
+      selectedOption: correction,
+      ambiguousTerms: message.clarificationTerms?.length ? message.clarificationTerms : ['correction'],
+      sessionId: message.sessionId || getCurrentSessionId(),
+      answerKey: 'correction',
+      answerValue: correction,
+      correctedQuery: originalQuery
+        ? `${originalQuery}. Correction from user: ${correction}`
+        : correction
+    });
+  };
+
   const executeQuery = async (
     datasetId: string,
     text: string,
@@ -286,7 +301,8 @@ const DashboardPage: React.FC = () => {
             ambiguous_terms: clarificationFeedback.ambiguousTerms,
             session_id: clarificationFeedback.sessionId,
             answer_key: clarificationFeedback.answerKey,
-            answer_value: clarificationFeedback.answerValue
+            answer_value: clarificationFeedback.answerValue,
+            corrected_query: clarificationFeedback.correctedQuery
           } : undefined
         })
       });
@@ -609,16 +625,42 @@ const DashboardPage: React.FC = () => {
                                         </div>
                                       </div>
                                     ) : (
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <span className="text-xs text-slate-500">{msg.correctionPrompt}</span>
+                                      <div className="space-y-2">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <span className="text-xs text-slate-500">{msg.correctionPrompt}</span>
+                                          {typeof msg.confidenceScore === 'number' && (
+                                            <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
+                                              msg.confidenceScore >= 0.8
+                                                ? 'bg-emerald-50 text-emerald-700'
+                                                : msg.confidenceScore >= 0.6
+                                                  ? 'bg-amber-100 text-amber-800'
+                                                  : 'bg-red-50 text-red-700'
+                                            }`}>
+                                              {msg.confidenceScore >= 0.8 ? 'High confidence' : msg.confidenceScore >= 0.6 ? 'Best guess' : 'Needs confirmation'}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          {['Use revenue', 'Use profit', 'Use quantity', 'Last month'].map((label) => (
+                                            <button
+                                              key={label}
+                                              type="button"
+                                              onClick={() => submitQuickCorrection(msg, label)}
+                                              disabled={isThinking}
+                                              className="inline-flex h-7 items-center rounded-full border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 shadow-sm transition hover:border-secondary/40 hover:text-secondary active:scale-95 disabled:opacity-40"
+                                            >
+                                              {label}
+                                            </button>
+                                          ))}
                                         <button
                                           type="button"
                                           onClick={() => setOpenCorrectionId(msg.id)}
                                           className="inline-flex h-7 items-center gap-1.5 rounded-full border border-secondary/20 bg-white px-3 text-[11px] font-semibold text-secondary shadow-sm transition hover:border-secondary/40 hover:bg-secondary hover:text-white active:scale-95"
                                         >
                                           <span className="material-symbols-outlined text-[14px]">edit</span>
-                                          Not right?
+                                          Tell me what to change
                                         </button>
+                                        </div>
                                       </div>
                                     )}
                                   </div>
